@@ -1,19 +1,19 @@
 import React from 'react';
-import { MOCK_PATIENTS } from '../constants';
 import { PatientStatus } from '../types';
 import { Users, AlertCircle, CheckCircle2, BedDouble } from 'lucide-react';
 import { PatientCard } from './PatientCard';
 import { Patient } from '../types';
 
 interface DashboardProps {
+  patients: Patient[];
   onSelectPatient: (patient: Patient) => void;
   onNavigatePatients: () => void;
 }
 
-export const Dashboard: React.FC<DashboardProps> = ({ onSelectPatient, onNavigatePatients }) => {
-  const criticalCount = MOCK_PATIENTS.filter(p => p.status === PatientStatus.CRITICAL).length;
-  const stableCount = MOCK_PATIENTS.filter(p => p.status === PatientStatus.STABLE).length;
-  const dischargeCount = MOCK_PATIENTS.filter(p => p.status === PatientStatus.DISCHARGE_READY).length;
+export const Dashboard: React.FC<DashboardProps> = ({ patients, onSelectPatient, onNavigatePatients }) => {
+  const criticalCount = patients.filter(p => p.status === PatientStatus.CRITICAL).length;
+  const stableCount = patients.filter(p => p.status === PatientStatus.STABLE).length;
+  const dischargeCount = patients.filter(p => p.status === PatientStatus.DISCHARGE_READY).length;
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-8">
@@ -30,7 +30,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectPatient, onNavigat
           </div>
           <div>
             <p className="text-sm font-medium text-slate-500">Total Inpatients</p>
-            <p className="text-2xl font-bold text-slate-900">{MOCK_PATIENTS.length}</p>
+            <p className="text-2xl font-bold text-slate-900">{patients.length}</p>
           </div>
         </div>
 
@@ -79,7 +79,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectPatient, onNavigat
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {MOCK_PATIENTS
+            {patients
               .sort((a, b) => (a.status === PatientStatus.CRITICAL ? -1 : 1))
               .slice(0, 4)
               .map(patient => (
@@ -96,7 +96,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectPatient, onNavigat
           <h2 className="text-lg font-bold text-slate-900">Treatment Schedule</h2>
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
              <div className="divide-y divide-slate-100">
-               {MOCK_PATIENTS.filter(p => p.radiationPlan).map(p => (
+               {patients.filter(p => p.radiationPlan).map(p => (
                  <div key={p.id} className="p-4 hover:bg-slate-50 transition-colors cursor-pointer" onClick={() => onSelectPatient(p)}>
                    <div className="flex justify-between items-start mb-1">
                      <span className="font-medium text-slate-900 text-sm">{p.name}</span>

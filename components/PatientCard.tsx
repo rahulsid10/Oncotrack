@@ -18,6 +18,16 @@ export const PatientCard: React.FC<PatientCardProps> = ({ patient, onClick }) =>
     }
   };
 
+  const getStatusDotColor = (status: PatientStatus) => {
+    switch (status) {
+      case PatientStatus.CRITICAL: return 'bg-rose-500';
+      case PatientStatus.STABLE: return 'bg-emerald-500';
+      case PatientStatus.RECOVERING: return 'bg-blue-500';
+      case PatientStatus.DISCHARGE_READY: return 'bg-slate-500';
+      default: return 'bg-slate-300';
+    }
+  };
+
   const rtProgress = patient.radiationPlan 
     ? Math.round((patient.radiationPlan.fractionsCompleted / patient.radiationPlan.fractionsTotal) * 100) 
     : 0;
@@ -35,7 +45,13 @@ export const PatientCard: React.FC<PatientCardProps> = ({ patient, onClick }) =>
             className="w-12 h-12 rounded-full object-cover ring-2 ring-slate-100"
           />
           <div>
-            <h3 className="font-semibold text-slate-900 group-hover:text-teal-700 transition-colors">{patient.name}</h3>
+            <div className="flex items-center gap-2">
+              <h3 className="font-semibold text-slate-900 group-hover:text-teal-700 transition-colors">{patient.name}</h3>
+              <span 
+                className={`w-2 h-2 rounded-full ${getStatusDotColor(patient.status)}`} 
+                title={`Status: ${patient.status}`}
+              />
+            </div>
             <p className="text-sm text-slate-500">{patient.mrn}</p>
           </div>
         </div>

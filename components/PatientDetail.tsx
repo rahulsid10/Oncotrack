@@ -1,31 +1,51 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Patient } from '../types';
 import { getPatientInsight } from '../services/geminiService';
 import { 
   ArrowLeft, Brain, Zap, Pill, Activity, Calendar, 
-  AlertTriangle, Stethoscope, Sparkles 
+  AlertTriangle, Stethoscope, Sparkles, Thermometer 
 } from 'lucide-react';
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from 'recharts';
-import ReactMarkdown from 'react-markdown'; // Actually, we'll implement simple rendering to avoid deps if possible, but let's assume raw text is fine or use a simple pre-wrap.
-
-// Since we cannot use external markdown lib without installing, we will render text safely with whitespace preservation.
-const MarkdownRenderer = ({ content }: { content: string }) => (
-  <div className="prose prose-sm prose-teal max-w-none text-slate-700 whitespace-pre-wrap leading-relaxed">
-    {content}
-  </div>
-);
+import ReactMarkdown from 'react-markdown';
+import { EditPatientModal } from './EditPatientModal';
 
 interface PatientDetailProps {
   patient: Patient;
   onBack: () => void;
+  onPatientUpdated?: (updatedPatient: Patient) => void;
 }
 
-export const PatientDetail: React.FC<PatientDetailProps> = ({ patient, onBack }) => {
+const CustomTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="bg-white p-3 border border-slate-200 rounded-lg shadow-lg">
+        <p className="font-semibold text-slate-700 mb-2">{new Date(label).toLocaleDateString()}</p>
+        {payload.map((entry: any, index: number) => (
+          <div key={index} className="flex items-center gap-2 text-sm">
+            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }} />
+            <span className="text-slate-500 capitalize">{entry.name}:</span>
+            <span className="font-medium text-slate-900">
+              {entry.value}
+              {entry.name.includes('Temp') ? '°C' : ''}
+              {entry.name.includes('SpO2') ? '%' : ''}
+              {entry.name.includes('BP') ? ' mmHg' : ''}
+              {entry.name.includes('Rate') ? ' bpm' : ''}
+            </span>
+          </div>
+        ))}
+      </div>
+    );
+  }
+  return null;
+};
+
+export const PatientDetail: React.FC<PatientDetailProps> = ({ patient, onBack, onPatientUpdated }) => {
   const [insight, setInsight] = useState<string | null>(null);
   const [loadingInsight, setLoadingInsight] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'treatment' | 'vitals'>('overview');
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
   const handleGenerateInsight = async () => {
     setLoadingInsight(true);
@@ -34,9 +54,26 @@ export const PatientDetail: React.FC<PatientDetailProps> = ({ patient, onBack })
     setLoadingInsight(false);
   };
 
+  const handleEditSuccess = (updatedPatient: Patient) => {
+      // Update local view if needed, or bubble up
+      if (onPatientUpdated) {
+          onPatientUpdated(updatedPatient);
+      }
+  };
+
   const rtProgress = patient.radiationPlan 
     ? Math.round((patient.radiationPlan.fractionsCompleted / patient.radiationPlan.fractionsTotal) * 100) 
     : 0;
+
+  const chemoProgress = patient.chemoProtocol
+    ? Math.round((patient.chemoProtocol.cycleCurrent / patient.chemoProtocol.cycleTotal) * 100)
+    : 0;
+
+  // Formatting date for X-Axis
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    return `${date.getMonth() + 1}/${date.getDate()}`;
+  };
 
   return (
     <div className="bg-white min-h-full">
@@ -63,7 +100,10 @@ export const PatientDetail: React.FC<PatientDetailProps> = ({ patient, onBack })
             </div>
           </div>
           <div className="flex gap-3">
-             <button className="px-4 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50">
+             <button 
+               onClick={() => setIsEditModalOpen(true)}
+               className="px-4 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+             >
                Edit Details
              </button>
              <button className="px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-lg hover:bg-teal-700 shadow-sm">
@@ -91,10 +131,10 @@ export const PatientDetail: React.FC<PatientDetailProps> = ({ patient, onBack })
       </div>
 
       <div className="p-8 max-w-7xl mx-auto">
-        <div className="grid grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
           {/* Main Content Area */}
-          <div className="col-span-2 space-y-8">
+          <div className="lg:col-span-2 space-y-8">
             
             {activeTab === 'overview' && (
               <>
@@ -121,8 +161,8 @@ export const PatientDetail: React.FC<PatientDetailProps> = ({ patient, onBack })
                   </div>
                   
                   {insight ? (
-                    <div className="bg-white/80 rounded-xl p-4 border border-indigo-100/50">
-                      <MarkdownRenderer content={insight} />
+                    <div className="bg-white/80 rounded-xl p-4 border border-indigo-100/50 prose prose-sm prose-indigo max-w-none">
+                      <ReactMarkdown>{insight}</ReactMarkdown>
                     </div>
                   ) : (
                     <p className="text-indigo-800/70 text-sm">
@@ -174,6 +214,9 @@ export const PatientDetail: React.FC<PatientDetailProps> = ({ patient, onBack })
                         CRITICAL CONDITION
                       </span>
                     )}
+                    {patient.allergies.length === 0 && (
+                      <span className="text-slate-500 text-sm italic">No known allergies</span>
+                    )}
                   </div>
                 </div>
               </>
@@ -197,11 +240,14 @@ export const PatientDetail: React.FC<PatientDetailProps> = ({ patient, onBack })
                     <div className="mb-6">
                       <div className="flex justify-between text-sm mb-2">
                         <span className="font-medium text-slate-700">Course Progress</span>
-                        <span className="text-slate-500">{patient.radiationPlan.fractionsCompleted} / {patient.radiationPlan.fractionsTotal} Fractions</span>
+                        <div className="flex items-center gap-2">
+                           <span className="font-bold text-slate-900">{rtProgress}%</span>
+                           <span className="text-slate-500 text-xs">({patient.radiationPlan.fractionsCompleted}/{patient.radiationPlan.fractionsTotal} Fx)</span>
+                        </div>
                       </div>
                       <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
                         <div 
-                          className="bg-amber-500 h-full rounded-full" 
+                          className="bg-amber-500 h-full rounded-full transition-all duration-1000 ease-out" 
                           style={{ width: `${rtProgress}%` }}
                         />
                       </div>
@@ -225,6 +271,7 @@ export const PatientDetail: React.FC<PatientDetailProps> = ({ patient, onBack })
                  ) : (
                    <div className="p-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-300">
                      <p className="text-slate-500">No active Radiation Therapy plan.</p>
+                     <button onClick={() => setIsEditModalOpen(true)} className="mt-2 text-teal-600 hover:underline text-sm font-medium">Add Radiation Plan</button>
                    </div>
                  )}
 
@@ -239,6 +286,22 @@ export const PatientDetail: React.FC<PatientDetailProps> = ({ patient, onBack })
                       <span className="bg-indigo-50 text-indigo-700 text-xs font-medium px-2 py-1 rounded-lg border border-indigo-100">
                         Cycle {patient.chemoProtocol.cycleCurrent} of {patient.chemoProtocol.cycleTotal}
                       </span>
+                    </div>
+
+                    <div className="mb-6">
+                      <div className="flex justify-between text-sm mb-2">
+                        <span className="font-medium text-slate-700">Regimen Progress</span>
+                         <div className="flex items-center gap-2">
+                           <span className="font-bold text-slate-900">{chemoProgress}%</span>
+                           <span className="text-slate-500 text-xs">({patient.chemoProtocol.cycleCurrent}/{patient.chemoProtocol.cycleTotal} Cycles)</span>
+                        </div>
+                      </div>
+                      <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
+                        <div 
+                          className="bg-indigo-500 h-full rounded-full transition-all duration-1000 ease-out" 
+                          style={{ width: `${chemoProgress}%` }}
+                        />
+                      </div>
                     </div>
 
                     <div className="mb-6">
@@ -273,53 +336,167 @@ export const PatientDetail: React.FC<PatientDetailProps> = ({ patient, onBack })
                  ) : (
                   <div className="p-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-300">
                     <p className="text-slate-500">No active Chemotherapy protocol.</p>
+                     <button onClick={() => setIsEditModalOpen(true)} className="mt-2 text-teal-600 hover:underline text-sm font-medium">Add Chemo Protocol</button>
                   </div>
                  )}
               </>
             )}
 
             {activeTab === 'vitals' && (
-              <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-                 <h3 className="font-semibold text-slate-900 mb-6 flex items-center gap-2">
-                    <Activity className="w-5 h-5 text-teal-500" />
-                    Vitals Trend (Last 7 Days)
-                 </h3>
-                 <div className="h-64 w-full">
-                   <ResponsiveContainer width="100%" height="100%">
-                     <LineChart data={patient.vitalsHistory}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                        <XAxis dataKey="date" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
-                        <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} domain={['auto', 'auto']} />
-                        <Tooltip 
-                          contentStyle={{ backgroundColor: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                        />
-                        <Line type="monotone" dataKey="systolic" stroke="#0d9488" strokeWidth={2} dot={{ fill: '#0d9488', r: 4 }} name="Systolic BP" />
-                        <Line type="monotone" dataKey="diastolic" stroke="#99f6e4" strokeWidth={2} dot={{ fill: '#99f6e4', r: 4 }} name="Diastolic BP" />
-                        <Line type="monotone" dataKey="heartRate" stroke="#f43f5e" strokeWidth={2} dot={{ fill: '#f43f5e', r: 4 }} name="Heart Rate" />
-                     </LineChart>
-                   </ResponsiveContainer>
-                 </div>
-                 <div className="mt-8 grid grid-cols-4 gap-4">
-                    <div className="p-4 bg-slate-50 rounded-xl text-center">
-                       <p className="text-xs text-slate-500 uppercase tracking-wider">Avg Temp</p>
-                       <p className="text-xl font-bold text-slate-800 mt-1">
-                         {(patient.vitalsHistory.reduce((acc, curr) => acc + curr.temp, 0) / patient.vitalsHistory.length).toFixed(1)}°C
-                       </p>
-                    </div>
-                    <div className="p-4 bg-slate-50 rounded-xl text-center">
-                       <p className="text-xs text-slate-500 uppercase tracking-wider">Avg SpO2</p>
-                       <p className="text-xl font-bold text-slate-800 mt-1">
-                         {Math.round(patient.vitalsHistory.reduce((acc, curr) => acc + curr.spo2, 0) / patient.vitalsHistory.length)}%
-                       </p>
-                    </div>
-                 </div>
+              <div className="space-y-8">
+                {/* Chart 1: Hemodynamics */}
+                <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+                   <h3 className="font-semibold text-slate-900 mb-6 flex items-center gap-2">
+                      <Activity className="w-5 h-5 text-rose-500" />
+                      Hemodynamics (BP & Heart Rate)
+                   </h3>
+                   <div className="h-72 w-full">
+                     <ResponsiveContainer width="100%" height="100%">
+                       <LineChart data={patient.vitalsHistory} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                          <XAxis 
+                            dataKey="date" 
+                            stroke="#94a3b8" 
+                            fontSize={12} 
+                            tickLine={false} 
+                            axisLine={false} 
+                            tickFormatter={formatDate}
+                          />
+                          <YAxis 
+                            stroke="#94a3b8" 
+                            fontSize={12} 
+                            tickLine={false} 
+                            axisLine={false} 
+                          />
+                          <Tooltip content={<CustomTooltip />} />
+                          <Legend wrapperStyle={{ paddingTop: '20px' }} />
+                          <Line 
+                            type="monotone" 
+                            dataKey="systolic" 
+                            name="Systolic BP" 
+                            stroke="#0f766e" 
+                            strokeWidth={2} 
+                            dot={{ fill: '#0f766e', r: 4 }} 
+                          />
+                          <Line 
+                            type="monotone" 
+                            dataKey="diastolic" 
+                            name="Diastolic BP" 
+                            stroke="#2dd4bf" 
+                            strokeWidth={2} 
+                            dot={{ fill: '#2dd4bf', r: 4 }} 
+                          />
+                          <Line 
+                            type="monotone" 
+                            dataKey="heartRate" 
+                            name="Heart Rate" 
+                            stroke="#f43f5e" 
+                            strokeWidth={2} 
+                            dot={{ fill: '#f43f5e', r: 4 }} 
+                          />
+                       </LineChart>
+                     </ResponsiveContainer>
+                   </div>
+                </div>
+
+                {/* Chart 2: Clinical Status (Temp & SpO2) */}
+                <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+                   <h3 className="font-semibold text-slate-900 mb-6 flex items-center gap-2">
+                      <Thermometer className="w-5 h-5 text-amber-500" />
+                      Clinical Status (Temp & SpO2)
+                   </h3>
+                   <div className="h-64 w-full">
+                     <ResponsiveContainer width="100%" height="100%">
+                       <LineChart data={patient.vitalsHistory} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                          <XAxis 
+                            dataKey="date" 
+                            stroke="#94a3b8" 
+                            fontSize={12} 
+                            tickLine={false} 
+                            axisLine={false}
+                            tickFormatter={formatDate}
+                          />
+                          {/* Left Axis for Temp */}
+                          <YAxis 
+                            yAxisId="left" 
+                            domain={['dataMin - 0.5', 'dataMax + 0.5']} 
+                            stroke="#f59e0b" 
+                            fontSize={12} 
+                            tickLine={false} 
+                            axisLine={false}
+                            unit="°C"
+                          />
+                          {/* Right Axis for SpO2 */}
+                          <YAxis 
+                            yAxisId="right" 
+                            orientation="right" 
+                            domain={[85, 100]} 
+                            stroke="#3b82f6" 
+                            fontSize={12} 
+                            tickLine={false} 
+                            axisLine={false}
+                            unit="%"
+                          />
+                          <Tooltip content={<CustomTooltip />} />
+                          <Legend wrapperStyle={{ paddingTop: '20px' }} />
+                          <Line 
+                            yAxisId="left"
+                            type="monotone" 
+                            dataKey="temp" 
+                            name="Temperature" 
+                            stroke="#f59e0b" 
+                            strokeWidth={2} 
+                            dot={{ fill: '#f59e0b', r: 4 }} 
+                          />
+                          <Line 
+                            yAxisId="right"
+                            type="monotone" 
+                            dataKey="spo2" 
+                            name="SpO2" 
+                            stroke="#3b82f6" 
+                            strokeWidth={2} 
+                            dot={{ fill: '#3b82f6', r: 4 }} 
+                          />
+                       </LineChart>
+                     </ResponsiveContainer>
+                   </div>
+                </div>
+
+                {/* Summary Stats */}
+                <div className="grid grid-cols-4 gap-4">
+                  <div className="p-4 bg-slate-50 rounded-xl text-center border border-slate-100">
+                     <p className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Avg Temp</p>
+                     <p className="text-xl font-bold text-amber-600 mt-1">
+                       {(patient.vitalsHistory.reduce((acc, curr) => acc + curr.temp, 0) / patient.vitalsHistory.length).toFixed(1)}°C
+                     </p>
+                  </div>
+                  <div className="p-4 bg-slate-50 rounded-xl text-center border border-slate-100">
+                     <p className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Avg SpO2</p>
+                     <p className="text-xl font-bold text-blue-600 mt-1">
+                       {Math.round(patient.vitalsHistory.reduce((acc, curr) => acc + curr.spo2, 0) / patient.vitalsHistory.length)}%
+                     </p>
+                  </div>
+                   <div className="p-4 bg-slate-50 rounded-xl text-center border border-slate-100">
+                     <p className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Avg HR</p>
+                     <p className="text-xl font-bold text-rose-600 mt-1">
+                       {Math.round(patient.vitalsHistory.reduce((acc, curr) => acc + curr.heartRate, 0) / patient.vitalsHistory.length)} <span className="text-xs font-medium">bpm</span>
+                     </p>
+                  </div>
+                   <div className="p-4 bg-slate-50 rounded-xl text-center border border-slate-100">
+                     <p className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Data Points</p>
+                     <p className="text-xl font-bold text-slate-700 mt-1">
+                       {patient.vitalsHistory.length}
+                     </p>
+                  </div>
+                </div>
               </div>
             )}
 
           </div>
 
           {/* Right Sidebar Info */}
-          <div className="space-y-6">
+          <div className="lg:col-span-1 space-y-6">
             <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
               <h3 className="font-semibold text-slate-900 mb-4 flex items-center gap-2">
                 <Stethoscope className="w-5 h-5 text-teal-500" />
@@ -365,6 +542,13 @@ export const PatientDetail: React.FC<PatientDetailProps> = ({ patient, onBack })
 
         </div>
       </div>
+
+      <EditPatientModal 
+        isOpen={isEditModalOpen} 
+        onClose={() => setIsEditModalOpen(false)} 
+        patient={patient}
+        onSuccess={handleEditSuccess}
+      />
     </div>
   );
-};
+}
