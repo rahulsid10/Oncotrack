@@ -2,7 +2,8 @@ export enum PatientStatus {
   STABLE = 'Stable',
   CRITICAL = 'Critical',
   RECOVERING = 'Recovering',
-  DISCHARGE_READY = 'Discharge Ready'
+  DISCHARGE_READY = 'Discharge Ready',
+  DISCHARGED = 'Discharged'
 }
 
 export interface RadiationPlan {

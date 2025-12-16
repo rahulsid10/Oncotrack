@@ -1,9 +1,9 @@
 import React from 'react';
-import { LayoutDashboard, Users, Calendar, Activity, Settings, LogOut } from 'lucide-react';
+import { LayoutDashboard, Users, Calendar, Activity, Settings, LogOut, History, ClipboardList } from 'lucide-react';
 
 interface SidebarProps {
-  activeView: 'dashboard' | 'patients';
-  onNavigate: (view: 'dashboard' | 'patients') => void;
+  activeView: 'dashboard' | 'patients' | 'history' | 'settings';
+  onNavigate: (view: 'dashboard' | 'patients' | 'history' | 'settings') => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ activeView, onNavigate }) => {
@@ -38,9 +38,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeView, onNavigate }) => {
           onClick={() => onNavigate('patients')}
         >
           <Users className="w-5 h-5" />
-          <span>Patients</span>
+          <span>Inpatients</span>
         </div>
         
+         <div 
+          className={navItemClass(activeView === 'history')}
+          onClick={() => onNavigate('history')}
+        >
+          <History className="w-5 h-5" />
+          <span>Discharge Log</span>
+        </div>
+
         {/* Mock Links for visuals */}
         <div className={navItemClass(false)}>
           <Calendar className="w-5 h-5" />
@@ -49,7 +57,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeView, onNavigate }) => {
       </nav>
 
       <div className="p-4 border-t border-slate-100">
-        <div className={navItemClass(false)}>
+        <div 
+          className={navItemClass(activeView === 'settings')}
+          onClick={() => onNavigate('settings')}
+        >
           <Settings className="w-5 h-5" />
           <span>Settings</span>
         </div>

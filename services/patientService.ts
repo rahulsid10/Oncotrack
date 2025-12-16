@@ -87,10 +87,24 @@ export const updatePatient = async (patient: Patient): Promise<{ success: boolea
   const { error } = await supabase
     .from('patients')
     .update(dbRow)
-    .eq('id', patient.id);
+    .eq('id', patient.id)
+    .select(); // IMPORTANT: Ensure we wait for the write to be confirmed and return data
 
   if (error) {
     console.error('Supabase update error:', error.message);
+    return { success: false, error: error.message };
+  }
+  return { success: true };
+};
+
+export const deletePatient = async (id: string): Promise<{ success: boolean; error?: string }> => {
+  const { error } = await supabase
+    .from('patients')
+    .delete()
+    .eq('id', id);
+
+  if (error) {
+    console.error('Supabase delete error:', error.message);
     return { success: false, error: error.message };
   }
   return { success: true };

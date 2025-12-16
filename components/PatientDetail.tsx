@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Patient } from '../types';
+import { Patient, PatientStatus } from '../types';
 import { getPatientInsight } from '../services/geminiService';
+import { updatePatient } from '../services/patientService';
 import { 
   ArrowLeft, Brain, Zap, Pill, Activity, Calendar, 
-  AlertTriangle, Stethoscope, Sparkles, Thermometer 
+  AlertTriangle, Stethoscope, Sparkles, Thermometer, LogOut 
 } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
@@ -46,6 +47,7 @@ export const PatientDetail: React.FC<PatientDetailProps> = ({ patient, onBack, o
   const [loadingInsight, setLoadingInsight] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'treatment' | 'vitals'>('overview');
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [discharging, setDischarging] = useState(false);
 
   const handleGenerateInsight = async () => {
     setLoadingInsight(true);
@@ -58,6 +60,23 @@ export const PatientDetail: React.FC<PatientDetailProps> = ({ patient, onBack, o
       // Update local view if needed, or bubble up
       if (onPatientUpdated) {
           onPatientUpdated(updatedPatient);
+      }
+  };
+
+  const handleDischarge = async () => {
+      if (window.confirm(`Are you sure you want to discharge ${patient.name}? This will move the patient to the Discharge Log.`)) {
+          setDischarging(true);
+          const updated = { ...patient, status: PatientStatus.DISCHARGED };
+          const { success } = await updatePatient(updated);
+          
+          if (success) {
+              if (onPatientUpdated) onPatientUpdated(updated);
+              onBack(); 
+              // IMPORTANT: Do NOT setDischarging(false) here because onBack() unmounts this component.
+          } else {
+              setDischarging(false); // Only reset if operation failed and we are still mounted
+              alert("Failed to discharge patient. Please try again.");
+          }
       }
   };
 
@@ -100,6 +119,14 @@ export const PatientDetail: React.FC<PatientDetailProps> = ({ patient, onBack, o
             </div>
           </div>
           <div className="flex gap-3">
+             <button 
+               onClick={handleDischarge}
+               disabled={discharging}
+               className="px-4 py-2 text-sm font-medium text-rose-600 bg-rose-50 border border-rose-200 rounded-lg hover:bg-rose-100 flex items-center gap-2"
+             >
+               <LogOut className="w-4 h-4" />
+               {discharging ? 'Discharging...' : 'Discharge'}
+             </button>
              <button 
                onClick={() => setIsEditModalOpen(true)}
                className="px-4 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"

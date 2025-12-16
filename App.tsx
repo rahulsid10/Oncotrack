@@ -3,7 +3,9 @@ import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './components/Dashboard';
 import { PatientList } from './components/PatientList';
 import { PatientDetail } from './components/PatientDetail';
-import { Patient } from './types';
+import { PatientHistory } from './components/PatientHistory';
+import { Settings } from './components/Settings';
+import { Patient, PatientStatus } from './types';
 import { getPatients, seedPatients } from './services/patientService';
 import { MOCK_PATIENTS } from './constants';
 import { Loader2, Database, RefreshCw, AlertTriangle, PlayCircle, Copy, Check } from 'lucide-react';
@@ -39,7 +41,7 @@ create policy "Enable access for all users" on public.patients
   for all using (true) with check (true);`;
 
 function App() {
-  const [activeView, setActiveView] = useState<'dashboard' | 'patients'>('dashboard');
+  const [activeView, setActiveView] = useState<'dashboard' | 'patients' | 'history' | 'settings'>('dashboard');
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,7 +51,9 @@ function App() {
   const [copied, setCopied] = useState(false);
 
   const fetchData = async () => {
-    setLoading(true);
+    // Only show full page loader if we have no data at all
+    if (patients.length === 0) setLoading(true);
+    
     setError(null);
     try {
       const data = await getPatients();
@@ -90,7 +94,7 @@ function App() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleNavigate = (view: 'dashboard' | 'patients') => {
+  const handleNavigate = (view: 'dashboard' | 'patients' | 'history' | 'settings') => {
     setActiveView(view);
     setSelectedPatient(null);
   };
@@ -100,11 +104,23 @@ function App() {
   };
 
   const handlePatientUpdated = (updatedPatient: Patient) => {
-      // Update selected patient to reflect changes immediately
-      setSelectedPatient(updatedPatient);
-      // Refresh list to keep everything in sync
-      fetchData();
+      // Optimistically update the local patients list immediately
+      // This ensures the UI reflects the change (like discharge) instantly without waiting for network
+      setPatients(prevPatients => 
+        prevPatients.map(p => p.id === updatedPatient.id ? updatedPatient : p)
+      );
+
+      // If the selected patient is the one being updated, update the detailed view state
+      if (selectedPatient?.id === updatedPatient.id) {
+        setSelectedPatient(updatedPatient);
+      }
+
+      // We rely on the optimistic update here. Calling fetchData() immediately can cause
+      // a race condition where the API returns the OLD status before the Write is propagated.
   };
+
+  // Filter patients: Dashboard and List only show active patients (not discharged)
+  const activePatients = patients.filter(p => p.status !== PatientStatus.DISCHARGED);
 
   // Check if the error is specifically about missing tables
   const isMissingTableError = error && (
@@ -263,17 +279,26 @@ function App() {
               <>
                 {activeView === 'dashboard' && (
                   <Dashboard 
-                    patients={patients}
+                    patients={activePatients}
                     onSelectPatient={handleSelectPatient}
                     onNavigatePatients={() => setActiveView('patients')}
                   />
                 )}
                 {activeView === 'patients' && (
                   <PatientList 
-                    patients={patients}
+                    patients={activePatients}
                     onSelectPatient={handleSelectPatient} 
                     onRefresh={fetchData}
                   />
+                )}
+                {activeView === 'history' && (
+                  <PatientHistory 
+                    patients={patients} // Pass all, component filters for DISCHARGED
+                    onRefresh={fetchData}
+                  />
+                )}
+                {activeView === 'settings' && (
+                  <Settings />
                 )}
               </>
             )}
