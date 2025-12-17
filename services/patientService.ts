@@ -19,7 +19,8 @@ const mapDBToPatient = (row: any): Patient => ({
   chemoProtocol: row.chemo_protocol,
   vitalsHistory: row.vitals_history || [],
   allergies: row.allergies || [],
-  imageUrl: row.image_url,
+  // Use DB value, or fallback to avatar generator if null/missing
+  imageUrl: row.image_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(row.name)}&background=random`,
 });
 
 export const getPatients = async (): Promise<Patient[]> => {
@@ -59,6 +60,19 @@ export const createPatient = async (patient: Omit<Patient, 'id'>): Promise<{ suc
   const { error } = await supabase.from('patients').insert([dbRow]);
 
   if (error) {
+    // Robustness: If the schema is outdated and missing image_url, retry without it
+    if (error.message.includes('image_url') || error.message.includes('column "image_url" of relation "patients" does not exist')) {
+      console.warn("Schema mismatch: image_url column missing. Retrying insert without image_url.");
+      const { image_url, ...safeRow } = dbRow;
+      const { error: retryError } = await supabase.from('patients').insert([safeRow]);
+      
+      if (retryError) {
+        console.error('Supabase retry insert error:', retryError.message);
+        return { success: false, error: retryError.message };
+      }
+      return { success: true };
+    }
+
     console.error('Supabase insert error:', error.message);
     return { success: false, error: error.message };
   }
@@ -91,6 +105,20 @@ export const updatePatient = async (patient: Patient): Promise<{ success: boolea
     .select(); // IMPORTANT: Ensure we wait for the write to be confirmed and return data
 
   if (error) {
+    // Robustness: If the schema is outdated and missing image_url, retry without it
+    if (error.message.includes('image_url') || error.message.includes('column "image_url" of relation "patients" does not exist')) {
+       console.warn("Schema mismatch: image_url column missing. Retrying update without image_url.");
+       const { image_url, ...safeRow } = dbRow;
+       const { error: retryError } = await supabase
+          .from('patients')
+          .update(safeRow)
+          .eq('id', patient.id)
+          .select();
+      
+       if (retryError) return { success: false, error: retryError.message };
+       return { success: true };
+    }
+
     console.error('Supabase update error:', error.message);
     return { success: false, error: error.message };
   }
@@ -133,6 +161,14 @@ export const seedPatients = async (): Promise<{ success: boolean; error?: string
   const { error } = await supabase.from('patients').insert(dbRows);
   
   if (error) {
+    // Fallback for seed if image_url missing
+    if (error.message.includes('image_url') || error.message.includes('column "image_url" of relation "patients" does not exist')) {
+        const safeRows = dbRows.map(({ image_url, ...rest }) => rest);
+        const { error: retryError } = await supabase.from('patients').insert(safeRows);
+        if (retryError) return { success: false, error: retryError.message };
+        return { success: true };
+    }
+
     console.error('Supabase seed error:', error.message);
     return { success: false, error: error.message };
   }

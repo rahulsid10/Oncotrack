@@ -33,6 +33,9 @@ create table if not exists public.patients (
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
+-- Ensure image_url column exists (fixes "Could not find column" error)
+alter table public.patients add column if not exists image_url text;
+
 -- Enable Row Level Security
 alter table public.patients enable row level security;
 
