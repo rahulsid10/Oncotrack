@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { Patient, PatientStatus } from '../types';
 import { getPatientInsight } from '../services/geminiService';
-import { updatePatient } from '../services/patientService';
+import { updatePatient, deletePatient } from '../services/patientService';
 import { 
   ArrowLeft, Brain, Zap, Pill, Activity, Calendar, 
-  AlertTriangle, Stethoscope, Sparkles, Thermometer, LogOut 
+  AlertTriangle, Stethoscope, Sparkles, Thermometer, LogOut, Trash2, Loader2 
 } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
@@ -16,6 +16,7 @@ interface PatientDetailProps {
   patient: Patient;
   onBack: () => void;
   onPatientUpdated?: (updatedPatient: Patient) => void;
+  onPatientDeleted?: (id: string) => void;
 }
 
 const CustomTooltip = ({ active, payload, label }: any) => {
@@ -42,12 +43,13 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   return null;
 };
 
-export const PatientDetail: React.FC<PatientDetailProps> = ({ patient, onBack, onPatientUpdated }) => {
+export const PatientDetail: React.FC<PatientDetailProps> = ({ patient, onBack, onPatientUpdated, onPatientDeleted }) => {
   const [insight, setInsight] = useState<string | null>(null);
   const [loadingInsight, setLoadingInsight] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'treatment' | 'vitals'>('overview');
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [discharging, setDischarging] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const handleGenerateInsight = async () => {
     setLoadingInsight(true);
@@ -61,6 +63,23 @@ export const PatientDetail: React.FC<PatientDetailProps> = ({ patient, onBack, o
       if (onPatientUpdated) {
           onPatientUpdated(updatedPatient);
       }
+  };
+
+  const handleDelete = async () => {
+    if (window.confirm(`Are you sure you want to permanently delete the record for ${patient.name}? This action cannot be undone.`)) {
+      setDeleting(true);
+      const { success, error } = await deletePatient(patient.id);
+      if (success) {
+        if (onPatientDeleted) {
+           onPatientDeleted(patient.id);
+        } else {
+           onBack();
+        }
+      } else {
+        alert("Failed to delete patient: " + (error || "Unknown error"));
+        setDeleting(false);
+      }
+    }
   };
 
   const handleDischarge = async () => {
@@ -119,6 +138,14 @@ export const PatientDetail: React.FC<PatientDetailProps> = ({ patient, onBack, o
             </div>
           </div>
           <div className="flex gap-3">
+             <button 
+                onClick={handleDelete}
+                disabled={deleting || discharging}
+                className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 hover:border-rose-200 rounded-lg transition-all"
+                title="Delete Patient Record"
+             >
+                {deleting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Trash2 className="w-5 h-5" />}
+             </button>
              <button 
                onClick={handleDischarge}
                disabled={discharging}

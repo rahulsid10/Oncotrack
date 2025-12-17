@@ -36,6 +36,9 @@ create table if not exists public.patients (
 -- Ensure image_url column exists (fixes "Could not find column" error)
 alter table public.patients add column if not exists image_url text;
 
+-- Reload schema cache to ensure PostgREST picks up the new column
+NOTIFY pgrst, 'reload schema';
+
 -- Enable Row Level Security
 alter table public.patients enable row level security;
 
@@ -108,27 +111,30 @@ function App() {
 
   const handlePatientUpdated = (updatedPatient: Patient) => {
       // Optimistically update the local patients list immediately
-      // This ensures the UI reflects the change (like discharge) instantly without waiting for network
       setPatients(prevPatients => 
         prevPatients.map(p => p.id === updatedPatient.id ? updatedPatient : p)
       );
 
-      // If the selected patient is the one being updated, update the detailed view state
       if (selectedPatient?.id === updatedPatient.id) {
         setSelectedPatient(updatedPatient);
       }
+  };
 
-      // We rely on the optimistic update here. Calling fetchData() immediately can cause
-      // a race condition where the API returns the OLD status before the Write is propagated.
+  const handlePatientDeleted = (id: string) => {
+    setPatients(prev => prev.filter(p => p.id !== id));
+    if (selectedPatient?.id === id) {
+      setSelectedPatient(null);
+    }
   };
 
   // Filter patients: Dashboard and List only show active patients (not discharged)
   const activePatients = patients.filter(p => p.status !== PatientStatus.DISCHARGED);
 
-  // Check if the error is specifically about missing tables
+  // Check if the error is specifically about missing tables or schema mismatch
   const isMissingTableError = error && (
     error.includes("Could not find the table") || 
-    error.includes("relation") && error.includes("does not exist")
+    (error.includes("relation") && error.includes("does not exist")) ||
+    error.includes("image_url") // Handle missing column error as setup requirement
   );
 
   // Loading Screen
@@ -156,7 +162,7 @@ function App() {
                  </div>
                  <div>
                    <h2 className="text-xl font-bold text-slate-900">Database Setup Required</h2>
-                   <p className="text-slate-500 text-sm">The 'patients' table was not found in your Supabase project.</p>
+                   <p className="text-slate-500 text-sm">The 'patients' table or columns are missing in your Supabase project.</p>
                  </div>
                </div>
                
@@ -174,6 +180,7 @@ function App() {
                      {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                    </button>
                  </div>
+                 <p className="text-xs text-slate-500 mt-2">This will create the table, add any missing columns (like image_url), and refresh the schema cache.</p>
                </div>
 
                <div className="flex gap-3 justify-end">
@@ -277,6 +284,7 @@ function App() {
                 patient={selectedPatient} 
                 onBack={() => setSelectedPatient(null)}
                 onPatientUpdated={handlePatientUpdated}
+                onPatientDeleted={handlePatientDeleted}
               />
             ) : (
               <>

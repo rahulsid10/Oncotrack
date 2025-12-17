@@ -61,9 +61,15 @@ export const createPatient = async (patient: Omit<Patient, 'id'>): Promise<{ suc
 
   if (error) {
     // Robustness: If the schema is outdated and missing image_url, retry without it
-    if (error.message.includes('image_url') || error.message.includes('column "image_url" of relation "patients" does not exist')) {
+    // Handle both lowercase and sentence case error messages
+    const errorMsg = error.message.toLowerCase();
+    if (errorMsg.includes('image_url') || errorMsg.includes('column "image_url"')) {
       console.warn("Schema mismatch: image_url column missing. Retrying insert without image_url.");
-      const { image_url, ...safeRow } = dbRow;
+      
+      // Explicitly clone and delete to be safe
+      const safeRow: any = { ...dbRow };
+      delete safeRow.image_url;
+
       const { error: retryError } = await supabase.from('patients').insert([safeRow]);
       
       if (retryError) {
@@ -106,9 +112,13 @@ export const updatePatient = async (patient: Patient): Promise<{ success: boolea
 
   if (error) {
     // Robustness: If the schema is outdated and missing image_url, retry without it
-    if (error.message.includes('image_url') || error.message.includes('column "image_url" of relation "patients" does not exist')) {
+    const errorMsg = error.message.toLowerCase();
+    if (errorMsg.includes('image_url') || errorMsg.includes('column "image_url"')) {
        console.warn("Schema mismatch: image_url column missing. Retrying update without image_url.");
-       const { image_url, ...safeRow } = dbRow;
+       
+       const safeRow: any = { ...dbRow };
+       delete safeRow.image_url;
+       
        const { error: retryError } = await supabase
           .from('patients')
           .update(safeRow)
@@ -151,22 +161,32 @@ export const seedPatients = async (): Promise<{ success: boolean; error?: string
     room_number: p.roomNumber,
     status: p.status,
     attending_physician: p.attendingPhysician,
-    radiation_plan: p.radiationPlan,
-    chemo_protocol: p.chemoProtocol,
-    vitals_history: p.vitalsHistory,
-    allergies: p.allergies,
+    radiation_plan: p.radiationPlan || null,
+    chemo_protocol: p.chemoProtocol || null,
+    vitals_history: p.vitalsHistory || [],
+    allergies: p.allergies || [],
     image_url: p.imageUrl
   }));
 
   const { error } = await supabase.from('patients').insert(dbRows);
-  
+
   if (error) {
-    // Fallback for seed if image_url missing
-    if (error.message.includes('image_url') || error.message.includes('column "image_url" of relation "patients" does not exist')) {
-        const safeRows = dbRows.map(({ image_url, ...rest }) => rest);
-        const { error: retryError } = await supabase.from('patients').insert(safeRows);
-        if (retryError) return { success: false, error: retryError.message };
-        return { success: true };
+    // Retry without image_url if schema is old
+    const errorMsg = error.message.toLowerCase();
+    if (errorMsg.includes('image_url') || errorMsg.includes('column "image_url"')) {
+       console.warn("Schema mismatch during seed: image_url column missing. Retrying seed without image_url.");
+       
+       const safeRows = dbRows.map(r => {
+         const { image_url, ...rest } = r as any;
+         return rest;
+       });
+
+       const { error: retryError } = await supabase.from('patients').insert(safeRows);
+       if (retryError) {
+         console.error('Supabase retry seed error:', retryError.message);
+         return { success: false, error: retryError.message };
+       }
+       return { success: true };
     }
 
     console.error('Supabase seed error:', error.message);
