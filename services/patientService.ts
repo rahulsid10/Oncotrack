@@ -19,7 +19,6 @@ const mapDBToPatient = (row: any): Patient => ({
   chemoProtocol: row.chemo_protocol,
   vitalsHistory: row.vitals_history || [],
   allergies: row.allergies || [],
-  // Use DB value, or fallback to avatar generator if null/missing
   imageUrl: row.image_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(row.name)}&background=random`,
   clinicalNotes: row.clinical_notes || [],
 });
@@ -28,11 +27,10 @@ export const getPatients = async (): Promise<Patient[]> => {
   const { data, error } = await supabase
     .from('patients')
     .select('*')
-    .order('created_at', { ascending: false }); // Show newest first
+    .order('created_at', { ascending: false });
 
   if (error) {
     console.error('Supabase fetch error:', error.message);
-    // Throw error so UI can handle "missing table" state
     throw new Error(error.message);
   }
 
@@ -40,7 +38,7 @@ export const getPatients = async (): Promise<Patient[]> => {
 };
 
 export const createPatient = async (patient: Omit<Patient, 'id'>): Promise<{ success: boolean; error?: string }> => {
-  const dbRow = {
+  const dbRow: any = {
     mrn: patient.mrn,
     name: patient.name,
     age: patient.age,
@@ -62,20 +60,19 @@ export const createPatient = async (patient: Omit<Patient, 'id'>): Promise<{ suc
   const { error } = await supabase.from('patients').insert([dbRow]);
 
   if (error) {
-    // Robustness: If the schema is outdated and missing image_url, retry without it
-    // Handle both lowercase and sentence case error messages
     const errorMsg = error.message.toLowerCase();
-    if (errorMsg.includes('image_url') || errorMsg.includes('column "image_url"')) {
-      console.warn("Schema mismatch: image_url column missing. Retrying insert without image_url.");
-      
-      // Explicitly clone and delete to be safe
-      const safeRow: any = { ...dbRow };
+    
+    // If a column-related error occurs, strip both new columns and retry
+    if (errorMsg.includes('image_url') || errorMsg.includes('clinical_notes') || errorMsg.includes('column') || errorMsg.includes('cache')) {
+      const safeRow = { ...dbRow };
       delete safeRow.image_url;
+      delete safeRow.clinical_notes;
 
+      console.warn(`Schema mismatch detected: "${error.message}". Retrying with minimal payload.`);
       const { error: retryError } = await supabase.from('patients').insert([safeRow]);
       
       if (retryError) {
-        console.error('Supabase retry insert error:', retryError.message);
+        console.error('Supabase final retry failed:', retryError.message);
         return { success: false, error: retryError.message };
       }
       return { success: true };
@@ -88,7 +85,7 @@ export const createPatient = async (patient: Omit<Patient, 'id'>): Promise<{ suc
 };
 
 export const updatePatient = async (patient: Patient): Promise<{ success: boolean; error?: string }> => {
-  const dbRow = {
+  const dbRow: any = {
     mrn: patient.mrn,
     name: patient.name,
     age: patient.age,
@@ -111,17 +108,17 @@ export const updatePatient = async (patient: Patient): Promise<{ success: boolea
     .from('patients')
     .update(dbRow)
     .eq('id', patient.id)
-    .select(); // IMPORTANT: Ensure we wait for the write to be confirmed and return data
+    .select();
 
   if (error) {
-    // Robustness: If the schema is outdated and missing image_url, retry without it
     const errorMsg = error.message.toLowerCase();
-    if (errorMsg.includes('image_url') || errorMsg.includes('column "image_url"')) {
-       console.warn("Schema mismatch: image_url column missing. Retrying update without image_url.");
-       
-       const safeRow: any = { ...dbRow };
+    
+    if (errorMsg.includes('image_url') || errorMsg.includes('clinical_notes') || errorMsg.includes('column') || errorMsg.includes('cache')) {
+       const safeRow = { ...dbRow };
        delete safeRow.image_url;
-       
+       delete safeRow.clinical_notes;
+
+       console.warn(`Schema mismatch detected on update: "${error.message}". Retrying with minimal payload.`);
        const { error: retryError } = await supabase
           .from('patients')
           .update(safeRow)
@@ -152,7 +149,6 @@ export const deletePatient = async (id: string): Promise<{ success: boolean; err
 };
 
 export const seedPatients = async (): Promise<{ success: boolean; error?: string }> => {
-  // Maps mock data to DB column structure
   const dbRows = MOCK_PATIENTS.map(p => ({
     mrn: p.mrn,
     name: p.name,
@@ -169,25 +165,26 @@ export const seedPatients = async (): Promise<{ success: boolean; error?: string
     vitals_history: p.vitalsHistory || [],
     allergies: p.allergies || [],
     image_url: p.imageUrl,
-    clinical_notes: (p as any).clinicalNotes || []
+    clinical_notes: p.clinicalNotes || []
   }));
 
   const { error } = await supabase.from('patients').insert(dbRows);
 
   if (error) {
-    // Retry without image_url if schema is old
     const errorMsg = error.message.toLowerCase();
-    if (errorMsg.includes('image_url') || errorMsg.includes('column "image_url"')) {
-       console.warn("Schema mismatch during seed: image_url column missing. Retrying seed without image_url.");
+    if (errorMsg.includes('image_url') || errorMsg.includes('clinical_notes') || errorMsg.includes('column') || errorMsg.includes('cache')) {
+       console.warn(`Schema mismatch during seed: ${error.message}. Stripping additional columns and retrying.`);
        
        const safeRows = dbRows.map(r => {
-         const { image_url, ...rest } = r as any;
-         return rest;
+         const row: any = { ...r };
+         delete row.image_url;
+         delete row.clinical_notes;
+         return row;
        });
 
        const { error: retryError } = await supabase.from('patients').insert(safeRows);
        if (retryError) {
-         console.error('Supabase retry seed error:', retryError.message);
+         console.error('Supabase final retry seed failed:', retryError.message);
          return { success: false, error: retryError.message };
        }
        return { success: true };
