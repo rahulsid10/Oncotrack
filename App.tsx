@@ -5,6 +5,7 @@ import { PatientList } from './components/PatientList';
 import { PatientDetail } from './components/PatientDetail';
 import { PatientHistory } from './components/PatientHistory';
 import { Settings } from './components/Settings';
+import { Login } from './components/Login';
 import { Patient, PatientStatus } from './types';
 import { getPatients, seedPatients } from './services/patientService';
 import { MOCK_PATIENTS } from './constants';
@@ -47,6 +48,7 @@ create policy "Enable access for all users" on public.patients
   for all using (true) with check (true);`;
 
 function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [activeView, setActiveView] = useState<'dashboard' | 'patients' | 'history' | 'settings'>('dashboard');
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -55,6 +57,14 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [seedError, setSeedError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+
+  // Check for existing session
+  useEffect(() => {
+    const auth = localStorage.getItem('oncotrack_auth');
+    if (auth === 'true') {
+      setIsAuthenticated(true);
+    }
+  }, []);
 
   const fetchData = async () => {
     // Only show full page loader if we have no data at all
@@ -72,9 +82,27 @@ function App() {
     }
   };
 
+  // Only fetch data if authenticated
   useEffect(() => {
-    fetchData();
-  }, []);
+    if (isAuthenticated) {
+      fetchData();
+    } else {
+      setLoading(false); // Stop loading if not authenticated
+    }
+  }, [isAuthenticated]);
+
+  const handleLogin = () => {
+    localStorage.setItem('oncotrack_auth', 'true');
+    setIsAuthenticated(true);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('oncotrack_auth');
+    setIsAuthenticated(false);
+    setPatients([]); // Clear sensitive data
+    setSelectedPatient(null);
+    setActiveView('dashboard');
+  };
 
   const handleSeedData = async () => {
     setSeeding(true);
@@ -110,7 +138,6 @@ function App() {
   };
 
   const handlePatientUpdated = (updatedPatient: Patient) => {
-      // Optimistically update the local patients list immediately
       setPatients(prevPatients => 
         prevPatients.map(p => p.id === updatedPatient.id ? updatedPatient : p)
       );
@@ -127,6 +154,11 @@ function App() {
     }
   };
 
+  // If not authenticated, show Login screen
+  if (!isAuthenticated) {
+    return <Login onLogin={handleLogin} />;
+  }
+
   // Filter patients: Dashboard and List only show active patients (not discharged)
   const activePatients = patients.filter(p => p.status !== PatientStatus.DISCHARGED);
 
@@ -137,7 +169,7 @@ function App() {
     error.includes("image_url") // Handle missing column error as setup requirement
   );
 
-  // Loading Screen
+  // Loading Screen (Authenticated but fetching)
   if (loading && patients.length === 0 && !error) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50">
@@ -241,6 +273,7 @@ function App() {
       <Sidebar 
         activeView={activeView} 
         onNavigate={handleNavigate} 
+        onLogout={handleLogout}
       />
       
       <main className="flex-1 ml-64 relative">

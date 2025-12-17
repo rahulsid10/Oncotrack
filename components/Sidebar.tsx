@@ -4,9 +4,10 @@ import { LayoutDashboard, Users, Calendar, Activity, Settings, LogOut, History, 
 interface SidebarProps {
   activeView: 'dashboard' | 'patients' | 'history' | 'settings';
   onNavigate: (view: 'dashboard' | 'patients' | 'history' | 'settings') => void;
+  onLogout: () => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ activeView, onNavigate }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ activeView, onNavigate, onLogout }) => {
   const navItemClass = (isActive: boolean) => 
     `flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 cursor-pointer ${
       isActive 
@@ -64,7 +65,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeView, onNavigate }) => {
           <Settings className="w-5 h-5" />
           <span>Settings</span>
         </div>
-        <div className="mt-2 flex items-center gap-3 px-4 py-3 text-rose-600 hover:bg-rose-50 rounded-xl cursor-pointer transition-colors">
+        <div 
+          onClick={onLogout}
+          className="mt-2 flex items-center gap-3 px-4 py-3 text-rose-600 hover:bg-rose-50 rounded-xl cursor-pointer transition-colors"
+        >
           <LogOut className="w-5 h-5" />
           <span>Sign Out</span>
         </div>
