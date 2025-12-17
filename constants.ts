@@ -1,3 +1,4 @@
+
 import { Patient, PatientStatus } from './types';
 
 const generateVitals = (days: number) => {
@@ -33,6 +34,7 @@ export const MOCK_PATIENTS: Patient[] = [
     attendingPhysician: 'Dr. Sarah Chen',
     imageUrl: 'https://picsum.photos/id/64/200/200',
     allergies: ['Penicillin', 'Sulfa'],
+    clinicalNotes: [],
     radiationPlan: {
       id: 'r1',
       targetSite: 'Left Breast',
@@ -73,6 +75,7 @@ export const MOCK_PATIENTS: Patient[] = [
     attendingPhysician: 'Dr. Marcus Webb',
     imageUrl: 'https://picsum.photos/id/91/200/200',
     allergies: ['Latex'],
+    clinicalNotes: [],
     radiationPlan: {
       id: 'r2',
       targetSite: 'Right Lung Upper Lobe',
@@ -101,6 +104,7 @@ export const MOCK_PATIENTS: Patient[] = [
     attendingPhysician: 'Dr. Sarah Chen',
     imageUrl: 'https://picsum.photos/id/338/200/200',
     allergies: ['None'],
+    clinicalNotes: [],
     radiationPlan: {
       id: 'r3',
       targetSite: 'Brain',
@@ -141,6 +145,7 @@ export const MOCK_PATIENTS: Patient[] = [
     attendingPhysician: 'Dr. Marcus Webb',
     imageUrl: 'https://picsum.photos/id/100/200/200',
     allergies: ['Contrast Dye'],
+    clinicalNotes: [],
     chemoProtocol: {
       id: 'c4',
       protocolName: 'FOLFOX',

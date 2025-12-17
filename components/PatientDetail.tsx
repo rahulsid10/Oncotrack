@@ -1,16 +1,17 @@
 import React, { useState } from 'react';
-import { Patient, PatientStatus } from '../types';
+import { Patient, PatientStatus, ClinicalNote } from '../types';
 import { getPatientInsight } from '../services/geminiService';
 import { updatePatient, deletePatient } from '../services/patientService';
 import { 
   ArrowLeft, Brain, Zap, Pill, Activity, Calendar, 
-  AlertTriangle, Stethoscope, Sparkles, Thermometer, LogOut, Trash2, Loader2 
+  AlertTriangle, Stethoscope, Sparkles, Thermometer, LogOut, Trash2, Loader2, Edit, Microscope, ImageIcon, ClipboardList, Clock
 } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from 'recharts';
 import ReactMarkdown from 'react-markdown';
 import { EditPatientModal } from './EditPatientModal';
+import { AddNoteModal } from './AddNoteModal';
 
 interface PatientDetailProps {
   patient: Patient;
@@ -46,10 +47,14 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 export const PatientDetail: React.FC<PatientDetailProps> = ({ patient, onBack, onPatientUpdated, onPatientDeleted }) => {
   const [insight, setInsight] = useState<string | null>(null);
   const [loadingInsight, setLoadingInsight] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'treatment' | 'vitals'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'treatment' | 'vitals' | 'notes'>('overview');
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [discharging, setDischarging] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  
+  // Note Modal State
+  const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
+  const [noteType, setNoteType] = useState<'General' | 'Pathology' | 'Imaging'>('General');
 
   const handleGenerateInsight = async () => {
     setLoadingInsight(true);
@@ -63,6 +68,28 @@ export const PatientDetail: React.FC<PatientDetailProps> = ({ patient, onBack, o
       if (onPatientUpdated) {
           onPatientUpdated(updatedPatient);
       }
+  };
+
+  const handleAddNote = async (note: ClinicalNote) => {
+    const updatedPatient = {
+      ...patient,
+      clinicalNotes: [note, ...(patient.clinicalNotes || [])]
+    };
+    
+    const { success, error } = await updatePatient(updatedPatient);
+    if (success && onPatientUpdated) {
+      onPatientUpdated(updatedPatient);
+      // Auto switch to notes tab to see the new note
+      setActiveTab('notes');
+    } else {
+      console.error(error);
+      alert("Failed to save note");
+    }
+  };
+
+  const openNoteModal = (type: 'General' | 'Pathology' | 'Imaging') => {
+    setNoteType(type);
+    setIsNoteModalOpen(true);
   };
 
   const handleDelete = async () => {
@@ -117,7 +144,7 @@ export const PatientDetail: React.FC<PatientDetailProps> = ({ patient, onBack, o
     <div className="bg-white min-h-full">
       {/* Header */}
       <div className="border-b border-slate-200 sticky top-0 bg-white z-10">
-        <div className="px-8 py-4 flex items-center justify-between">
+        <div className="px-4 md:px-8 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <button 
               onClick={onBack}
@@ -125,19 +152,19 @@ export const PatientDetail: React.FC<PatientDetailProps> = ({ patient, onBack, o
             >
               <ArrowLeft className="w-5 h-5" />
             </button>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3 md:gap-4">
               <img 
                 src={patient.imageUrl} 
                 alt={patient.name} 
-                className="w-12 h-12 rounded-full object-cover ring-2 ring-slate-100"
+                className="w-10 h-10 md:w-12 md:h-12 rounded-full object-cover ring-2 ring-slate-100"
               />
-              <div>
-                <h1 className="text-xl font-bold text-slate-900">{patient.name}</h1>
-                <p className="text-sm text-slate-500">MRN: {patient.mrn} • {patient.age}y • {patient.gender}</p>
+              <div className="overflow-hidden">
+                <h1 className="text-lg md:text-xl font-bold text-slate-900 truncate">{patient.name}</h1>
+                <p className="text-xs md:text-sm text-slate-500 truncate">{patient.mrn} • {patient.gender}</p>
               </div>
             </div>
           </div>
-          <div className="flex gap-3">
+          <div className="flex gap-2">
              <button 
                 onClick={handleDelete}
                 disabled={deleting || discharging}
@@ -149,42 +176,53 @@ export const PatientDetail: React.FC<PatientDetailProps> = ({ patient, onBack, o
              <button 
                onClick={handleDischarge}
                disabled={discharging}
-               className="px-4 py-2 text-sm font-medium text-rose-600 bg-rose-50 border border-rose-200 rounded-lg hover:bg-rose-100 flex items-center gap-2"
+               className="p-2 md:px-4 md:py-2 text-sm font-medium text-rose-600 bg-rose-50 border border-rose-200 rounded-lg hover:bg-rose-100 flex items-center gap-2 transition-colors"
+               title="Discharge"
              >
-               <LogOut className="w-4 h-4" />
-               {discharging ? 'Discharging...' : 'Discharge'}
+               <LogOut className="w-5 h-5 md:w-4 md:h-4" />
+               <span className="hidden md:inline">{discharging ? 'Discharging...' : 'Discharge'}</span>
              </button>
              <button 
                onClick={() => setIsEditModalOpen(true)}
-               className="px-4 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+               className="p-2 md:px-4 md:py-2 text-sm font-medium text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 flex items-center gap-2"
+               title="Edit Details"
              >
-               Edit Details
+               <Edit className="w-5 h-5 md:hidden" />
+               <span className="hidden md:inline">Edit Details</span>
              </button>
-             <button className="px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-lg hover:bg-teal-700 shadow-sm">
+             <button 
+               onClick={() => openNoteModal('General')}
+               className="hidden md:block px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-lg hover:bg-teal-700 shadow-sm transition-colors"
+             >
                Add Clinical Note
              </button>
           </div>
         </div>
         
         {/* Tabs */}
-        <div className="px-8 flex gap-8">
-          {['overview', 'treatment', 'vitals'].map((tab) => (
+        <div className="px-4 md:px-8 flex gap-6 md:gap-8 overflow-x-auto no-scrollbar">
+          {['overview', 'treatment', 'vitals', 'notes'].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab as any)}
-              className={`pb-4 text-sm font-medium border-b-2 transition-colors capitalize ${
+              className={`pb-4 text-sm font-medium border-b-2 transition-colors capitalize whitespace-nowrap flex items-center gap-2 ${
                 activeTab === tab 
                   ? 'border-teal-600 text-teal-700' 
                   : 'border-transparent text-slate-500 hover:text-slate-700'
               }`}
             >
               {tab}
+              {tab === 'notes' && (patient.clinicalNotes?.length || 0) > 0 && (
+                 <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full text-xs font-semibold">
+                   {patient.clinicalNotes?.length}
+                 </span>
+              )}
             </button>
           ))}
         </div>
       </div>
 
-      <div className="p-8 max-w-7xl mx-auto">
+      <div className="p-4 md:p-8 max-w-7xl mx-auto">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
           {/* Main Content Area */}
@@ -194,7 +232,7 @@ export const PatientDetail: React.FC<PatientDetailProps> = ({ patient, onBack, o
               <>
                 {/* AI Insight Section */}
                 <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-2xl p-6 border border-indigo-100">
-                  <div className="flex items-center justify-between mb-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-3">
                     <div className="flex items-center gap-2 text-indigo-900">
                       <Sparkles className="w-5 h-5 text-indigo-600" />
                       <h2 className="font-semibold text-lg">AI Clinical Insight</h2>
@@ -203,7 +241,7 @@ export const PatientDetail: React.FC<PatientDetailProps> = ({ patient, onBack, o
                       <button 
                         onClick={handleGenerateInsight}
                         disabled={loadingInsight}
-                        className="px-4 py-2 bg-white text-indigo-600 text-sm font-medium rounded-lg shadow-sm border border-indigo-100 hover:bg-indigo-50 disabled:opacity-50 transition-all flex items-center gap-2"
+                        className="w-full sm:w-auto px-4 py-2 bg-white text-indigo-600 text-sm font-medium rounded-lg shadow-sm border border-indigo-100 hover:bg-indigo-50 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
                       >
                         {loadingInsight ? (
                           <>Generating...</>
@@ -231,7 +269,7 @@ export const PatientDetail: React.FC<PatientDetailProps> = ({ patient, onBack, o
                     <Brain className="w-5 h-5 text-slate-500" />
                     Diagnosis & Admission
                   </h3>
-                  <div className="grid grid-cols-2 gap-y-4 gap-x-8">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-4 gap-x-8">
                     <div>
                       <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Primary Diagnosis</p>
                       <p className="text-slate-900 font-medium mt-1">{patient.diagnosis}</p>
@@ -307,7 +345,7 @@ export const PatientDetail: React.FC<PatientDetailProps> = ({ patient, onBack, o
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-4 text-sm">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
                       <div className="p-3 bg-slate-50 rounded-lg">
                         <p className="text-slate-500 text-xs">Target Site</p>
                         <p className="font-semibold text-slate-800">{patient.radiationPlan.targetSite}</p>
@@ -360,21 +398,21 @@ export const PatientDetail: React.FC<PatientDetailProps> = ({ patient, onBack, o
 
                     <div className="mb-6">
                        <h4 className="text-sm font-medium text-slate-700 mb-3">Protocol: {patient.chemoProtocol.protocolName}</h4>
-                       <div className="overflow-hidden rounded-xl border border-slate-200">
+                       <div className="overflow-x-auto rounded-xl border border-slate-200">
                          <table className="w-full text-sm text-left">
                            <thead className="bg-slate-50 text-slate-500">
                              <tr>
-                               <th className="px-4 py-3 font-medium">Drug</th>
-                               <th className="px-4 py-3 font-medium">Dosage</th>
-                               <th className="px-4 py-3 font-medium">Route</th>
+                               <th className="px-4 py-3 font-medium whitespace-nowrap">Drug</th>
+                               <th className="px-4 py-3 font-medium whitespace-nowrap">Dosage</th>
+                               <th className="px-4 py-3 font-medium whitespace-nowrap">Route</th>
                              </tr>
                            </thead>
                            <tbody className="divide-y divide-slate-100">
                              {patient.chemoProtocol.drugs.map((drug, i) => (
                                <tr key={i} className="bg-white">
-                                 <td className="px-4 py-3 font-medium text-slate-800">{drug.name}</td>
-                                 <td className="px-4 py-3 text-slate-600">{drug.dosage}</td>
-                                 <td className="px-4 py-3 text-slate-600">{drug.route}</td>
+                                 <td className="px-4 py-3 font-medium text-slate-800 whitespace-nowrap">{drug.name}</td>
+                                 <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{drug.dosage}</td>
+                                 <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{drug.route}</td>
                                </tr>
                              ))}
                            </tbody>
@@ -406,7 +444,7 @@ export const PatientDetail: React.FC<PatientDetailProps> = ({ patient, onBack, o
                    </h3>
                    <div className="h-72 w-full">
                      <ResponsiveContainer width="100%" height="100%">
-                       <LineChart data={patient.vitalsHistory} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                       <LineChart data={patient.vitalsHistory} margin={{ top: 5, right: 0, left: -20, bottom: 5 }}>
                           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                           <XAxis 
                             dataKey="date" 
@@ -461,7 +499,7 @@ export const PatientDetail: React.FC<PatientDetailProps> = ({ patient, onBack, o
                    </h3>
                    <div className="h-64 w-full">
                      <ResponsiveContainer width="100%" height="100%">
-                       <LineChart data={patient.vitalsHistory} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                       <LineChart data={patient.vitalsHistory} margin={{ top: 5, right: 0, left: -20, bottom: 5 }}>
                           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                           <XAxis 
                             dataKey="date" 
@@ -518,7 +556,7 @@ export const PatientDetail: React.FC<PatientDetailProps> = ({ patient, onBack, o
                 </div>
 
                 {/* Summary Stats */}
-                <div className="grid grid-cols-4 gap-4">
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                   <div className="p-4 bg-slate-50 rounded-xl text-center border border-slate-100">
                      <p className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Avg Temp</p>
                      <p className="text-xl font-bold text-amber-600 mt-1">
@@ -544,6 +582,84 @@ export const PatientDetail: React.FC<PatientDetailProps> = ({ patient, onBack, o
                      </p>
                   </div>
                 </div>
+              </div>
+            )}
+
+            {activeTab === 'notes' && (
+              <div className="space-y-6">
+                <div className="flex justify-between items-center mb-2">
+                  <h3 className="font-semibold text-slate-900 flex items-center gap-2">
+                    <ClipboardList className="w-5 h-5 text-slate-500" />
+                    Notes & Requisitions
+                  </h3>
+                  <button 
+                     onClick={() => openNoteModal('General')}
+                     className="md:hidden text-sm text-teal-600 font-medium"
+                  >
+                    + Add Note
+                  </button>
+                </div>
+
+                {(!patient.clinicalNotes || patient.clinicalNotes.length === 0) ? (
+                   <div className="text-center py-12 bg-slate-50 rounded-2xl border border-dashed border-slate-300">
+                     <ClipboardList className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                     <p className="text-slate-500">No clinical notes or orders yet.</p>
+                     <p className="text-sm text-slate-400 mt-1">Use the Quick Actions panel or Add button to create one.</p>
+                   </div>
+                ) : (
+                  <div className="space-y-4">
+                    {patient.clinicalNotes.map((note) => (
+                      <div 
+                        key={note.id} 
+                        className={`p-5 rounded-xl border relative overflow-hidden transition-all
+                          ${note.type === 'Pathology' 
+                            ? 'bg-amber-50 border-amber-200 hover:border-amber-300' 
+                            : note.type === 'Imaging' 
+                            ? 'bg-blue-50 border-blue-200 hover:border-blue-300' 
+                            : 'bg-white border-slate-200 hover:border-slate-300 shadow-sm'}
+                        `}
+                      >
+                         {/* Visual Alert Strip */}
+                         {(note.type === 'Pathology' || note.type === 'Imaging') && (
+                            <div className={`absolute top-0 left-0 bottom-0 w-1 ${note.type === 'Pathology' ? 'bg-amber-400' : 'bg-blue-400'}`} />
+                         )}
+
+                         <div className="flex justify-between items-start mb-3 pl-2">
+                           <div className="flex items-center gap-2">
+                              {note.type === 'Pathology' && <Microscope className="w-4 h-4 text-amber-600" />}
+                              {note.type === 'Imaging' && <ImageIcon className="w-4 h-4 text-blue-600" />}
+                              {note.type === 'General' && <ClipboardList className="w-4 h-4 text-slate-400" />}
+                              
+                              <span className={`text-sm font-semibold
+                                ${note.type === 'Pathology' ? 'text-amber-800' : note.type === 'Imaging' ? 'text-blue-800' : 'text-slate-700'}
+                              `}>
+                                {note.type === 'General' ? 'Clinical Note' : note.type === 'Pathology' ? 'Lab Investigation Order' : 'Imaging Requisition'}
+                              </span>
+                           </div>
+                           <div className="flex items-center gap-1.5 text-xs text-slate-400">
+                             <Clock className="w-3 h-3" />
+                             <span>{new Date(note.date).toLocaleString()}</span>
+                           </div>
+                         </div>
+                         
+                         <div className={`pl-2 text-sm leading-relaxed whitespace-pre-wrap ${note.type !== 'General' ? 'font-medium' : ''} text-slate-700`}>
+                           {note.content}
+                         </div>
+
+                         <div className="mt-4 pl-2 flex items-center justify-between">
+                            <span className="text-xs text-slate-400 font-medium">{note.author}</span>
+                            {(note.type === 'Pathology' || note.type === 'Imaging') && (
+                               <span className={`text-xs px-2 py-0.5 rounded border 
+                                  ${note.type === 'Pathology' ? 'bg-amber-100 border-amber-200 text-amber-700' : 'bg-blue-100 border-blue-200 text-blue-700'}
+                               `}>
+                                 Alert: Requisition Active
+                               </span>
+                            )}
+                         </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
@@ -581,13 +697,24 @@ export const PatientDetail: React.FC<PatientDetailProps> = ({ patient, onBack, o
             <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
               <h3 className="font-semibold text-slate-900 mb-4">Quick Actions</h3>
               <div className="space-y-2">
-                <button className="w-full py-2 px-4 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg text-sm font-medium transition-colors text-left">
-                  Schedule Lab Work
+                <button 
+                  onClick={() => openNoteModal('Pathology')}
+                  className="w-full py-2 px-4 bg-white border border-slate-200 hover:bg-amber-50 hover:border-amber-200 hover:text-amber-700 text-slate-700 rounded-lg text-sm font-medium transition-colors text-left flex items-center justify-between group"
+                >
+                  <span>Schedule Lab Work</span>
+                  <Microscope className="w-4 h-4 text-slate-400 group-hover:text-amber-500" />
                 </button>
-                 <button className="w-full py-2 px-4 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg text-sm font-medium transition-colors text-left">
-                  Request Imaging
+                 <button 
+                   onClick={() => openNoteModal('Imaging')}
+                   className="w-full py-2 px-4 bg-white border border-slate-200 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-700 text-slate-700 rounded-lg text-sm font-medium transition-colors text-left flex items-center justify-between group"
+                 >
+                  <span>Request Imaging</span>
+                  <ImageIcon className="w-4 h-4 text-slate-400 group-hover:text-blue-500" />
                 </button>
-                 <button className="w-full py-2 px-4 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg text-sm font-medium transition-colors text-left">
+                 <button 
+                    onClick={() => setIsEditModalOpen(true)}
+                    className="w-full py-2 px-4 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg text-sm font-medium transition-colors text-left"
+                 >
                   Log Vital Signs
                 </button>
               </div>
@@ -602,6 +729,13 @@ export const PatientDetail: React.FC<PatientDetailProps> = ({ patient, onBack, o
         onClose={() => setIsEditModalOpen(false)} 
         patient={patient}
         onSuccess={handleEditSuccess}
+      />
+
+      <AddNoteModal 
+        isOpen={isNoteModalOpen} 
+        onClose={() => setIsNoteModalOpen(false)} 
+        onSave={handleAddNote}
+        initialType={noteType}
       />
     </div>
   );

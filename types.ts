@@ -1,3 +1,4 @@
+
 export enum PatientStatus {
   STABLE = 'Stable',
   CRITICAL = 'Critical',
@@ -45,6 +46,14 @@ export interface VitalSign {
   spo2: number;
 }
 
+export interface ClinicalNote {
+  id: string;
+  date: string;
+  content: string;
+  type: 'General' | 'Pathology' | 'Imaging';
+  author: string;
+}
+
 export interface Patient {
   id: string;
   mrn: string; // Medical Record Number
@@ -62,4 +71,5 @@ export interface Patient {
   vitalsHistory: VitalSign[];
   allergies: string[];
   imageUrl: string;
+  clinicalNotes: ClinicalNote[];
 }

@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { X, Save, Loader2, UserPlus, Zap } from 'lucide-react';
 import { Patient, PatientStatus } from '../types';
@@ -85,6 +86,7 @@ export const AddPatientModal: React.FC<AddPatientModalProps> = ({ isOpen, onClos
       vitalsHistory: [], // Empty initially
       imageUrl: '', // Will be generated in service
       radiationPlan,
+      clinicalNotes: [],
     };
 
     const { success, error: apiError } = await createPatient(newPatient);

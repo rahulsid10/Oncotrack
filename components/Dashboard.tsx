@@ -16,16 +16,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ patients, onSelectPatient,
   const dischargeCount = patients.filter(p => p.status === PatientStatus.DISCHARGE_READY).length;
 
   return (
-    <div className="p-8 max-w-7xl mx-auto space-y-8">
+    <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-8">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Ward Overview</h1>
-        <p className="text-slate-500 mt-1">Oncology Wing 3 • Today, {new Date().toLocaleDateString()}</p>
+        <h1 className="text-xl md:text-2xl font-bold text-slate-900">Ward Overview</h1>
+        <p className="text-sm md:text-base text-slate-500 mt-1">Oncology Wing 3 • Today, {new Date().toLocaleDateString()}</p>
       </div>
 
       {/* Stats Row */}
-      <div className="grid grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
-          <div className="p-3 bg-blue-50 rounded-lg text-blue-600">
+          <div className="p-3 bg-blue-50 rounded-lg text-blue-600 flex-shrink-0">
             <BedDouble className="w-6 h-6" />
           </div>
           <div>
@@ -35,7 +35,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ patients, onSelectPatient,
         </div>
 
         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
-          <div className="p-3 bg-rose-50 rounded-lg text-rose-600">
+          <div className="p-3 bg-rose-50 rounded-lg text-rose-600 flex-shrink-0">
             <AlertCircle className="w-6 h-6" />
           </div>
           <div>
@@ -45,7 +45,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ patients, onSelectPatient,
         </div>
 
         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
-          <div className="p-3 bg-emerald-50 rounded-lg text-emerald-600">
+          <div className="p-3 bg-emerald-50 rounded-lg text-emerald-600 flex-shrink-0">
             <CheckCircle2 className="w-6 h-6" />
           </div>
           <div>
@@ -55,7 +55,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ patients, onSelectPatient,
         </div>
 
         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
-          <div className="p-3 bg-indigo-50 rounded-lg text-indigo-600">
+          <div className="p-3 bg-indigo-50 rounded-lg text-indigo-600 flex-shrink-0">
             <Users className="w-6 h-6" />
           </div>
           <div>
@@ -66,8 +66,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ patients, onSelectPatient,
       </div>
 
       {/* Lists Section */}
-      <div className="grid grid-cols-3 gap-8">
-        <div className="col-span-2 space-y-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="lg:col-span-2 space-y-6">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-bold text-slate-900">Priority Attention</h2>
             <button 

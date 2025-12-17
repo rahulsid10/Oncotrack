@@ -21,6 +21,7 @@ const mapDBToPatient = (row: any): Patient => ({
   allergies: row.allergies || [],
   // Use DB value, or fallback to avatar generator if null/missing
   imageUrl: row.image_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(row.name)}&background=random`,
+  clinicalNotes: row.clinical_notes || [],
 });
 
 export const getPatients = async (): Promise<Patient[]> => {
@@ -55,6 +56,7 @@ export const createPatient = async (patient: Omit<Patient, 'id'>): Promise<{ suc
     vitals_history: patient.vitalsHistory || [],
     allergies: patient.allergies || [],
     image_url: patient.imageUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(patient.name)}&background=random`,
+    clinical_notes: patient.clinicalNotes || [],
   };
 
   const { error } = await supabase.from('patients').insert([dbRow]);
@@ -101,7 +103,8 @@ export const updatePatient = async (patient: Patient): Promise<{ success: boolea
     chemo_protocol: patient.chemoProtocol || null,
     vitals_history: patient.vitalsHistory || [],
     allergies: patient.allergies || [],
-    image_url: patient.imageUrl
+    image_url: patient.imageUrl,
+    clinical_notes: patient.clinicalNotes || [],
   };
 
   const { error } = await supabase
@@ -165,7 +168,8 @@ export const seedPatients = async (): Promise<{ success: boolean; error?: string
     chemo_protocol: p.chemoProtocol || null,
     vitals_history: p.vitalsHistory || [],
     allergies: p.allergies || [],
-    image_url: p.imageUrl
+    image_url: p.imageUrl,
+    clinical_notes: (p as any).clinicalNotes || []
   }));
 
   const { error } = await supabase.from('patients').insert(dbRows);

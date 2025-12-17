@@ -9,7 +9,7 @@ import { Login } from './components/Login';
 import { Patient, PatientStatus } from './types';
 import { getPatients, seedPatients } from './services/patientService';
 import { MOCK_PATIENTS } from './constants';
-import { Loader2, Database, RefreshCw, AlertTriangle, PlayCircle, Copy, Check } from 'lucide-react';
+import { Loader2, Database, RefreshCw, AlertTriangle, PlayCircle, Copy, Check, Menu, Activity } from 'lucide-react';
 
 // SQL Schema for the user to run if table is missing
 const SCHEMA_SQL = `-- Run this in your Supabase SQL Editor
@@ -31,11 +31,13 @@ create table if not exists public.patients (
   vitals_history jsonb default '[]'::jsonb,
   allergies text[] default '{}',
   image_url text,
+  clinical_notes jsonb default '[]'::jsonb,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
--- Ensure image_url column exists (fixes "Could not find column" error)
+-- Ensure columns exist (fixes "Could not find column" error)
 alter table public.patients add column if not exists image_url text;
+alter table public.patients add column if not exists clinical_notes jsonb default '[]'::jsonb;
 
 -- Reload schema cache to ensure PostgREST picks up the new column
 NOTIFY pgrst, 'reload schema';
@@ -57,6 +59,9 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [seedError, setSeedError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  
+  // Mobile menu state
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Check for existing session
   useEffect(() => {
@@ -102,6 +107,7 @@ function App() {
     setPatients([]); // Clear sensitive data
     setSelectedPatient(null);
     setActiveView('dashboard');
+    setIsMobileMenuOpen(false);
   };
 
   const handleSeedData = async () => {
@@ -131,6 +137,7 @@ function App() {
   const handleNavigate = (view: 'dashboard' | 'patients' | 'history' | 'settings') => {
     setActiveView(view);
     setSelectedPatient(null);
+    setIsMobileMenuOpen(false); // Close mobile menu on navigate
   };
 
   const handleSelectPatient = (patient: Patient) => {
@@ -166,7 +173,8 @@ function App() {
   const isMissingTableError = error && (
     error.includes("Could not find the table") || 
     (error.includes("relation") && error.includes("does not exist")) ||
-    error.includes("image_url") // Handle missing column error as setup requirement
+    error.includes("image_url") || // Handle missing column error as setup requirement
+    error.includes("clinical_notes")
   );
 
   // Loading Screen (Authenticated but fetching)
@@ -183,6 +191,7 @@ function App() {
 
   // Database Setup / Error Screen
   if (error && patients.length === 0) {
+     // ... (Keep existing error handling logic)
      if (isMissingTableError) {
        return (
          <div className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
@@ -212,7 +221,7 @@ function App() {
                      {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                    </button>
                  </div>
-                 <p className="text-xs text-slate-500 mt-2">This will create the table, add any missing columns (like image_url), and refresh the schema cache.</p>
+                 <p className="text-xs text-slate-500 mt-2">This will create the table, add any missing columns (like image_url, clinical_notes), and refresh the schema cache.</p>
                </div>
 
                <div className="flex gap-3 justify-end">
@@ -274,15 +283,35 @@ function App() {
         activeView={activeView} 
         onNavigate={handleNavigate} 
         onLogout={handleLogout}
+        isOpen={isMobileMenuOpen}
+        onClose={() => setIsMobileMenuOpen(false)}
       />
       
-      <main className="flex-1 ml-64 relative">
+      {/* Main Content Area - Responsive Margin */}
+      <main className="flex-1 md:ml-64 relative flex flex-col min-h-screen transition-all duration-300">
+        
+        {/* Mobile Header */}
+        <div className="md:hidden flex items-center justify-between p-4 bg-white border-b border-slate-200 sticky top-0 z-20">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-teal-600 rounded-lg flex items-center justify-center">
+              <Activity className="w-4 h-4 text-white" />
+            </div>
+            <span className="font-bold text-slate-800">OncoTrack</span>
+          </div>
+          <button 
+            onClick={() => setIsMobileMenuOpen(true)}
+            className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg"
+          >
+            <Menu className="w-6 h-6" />
+          </button>
+        </div>
+
         {patients.length === 0 && !loading ? (
-           <div className="flex flex-col items-center justify-center h-screen space-y-6">
+           <div className="flex flex-col items-center justify-center flex-1 space-y-6 p-4">
              <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center">
                <Database className="w-8 h-8 text-slate-400" />
              </div>
-             <div className="text-center max-w-md px-6">
+             <div className="text-center max-w-md px-4">
                <h2 className="text-xl font-bold text-slate-900">Database Connected but Empty</h2>
                <p className="text-slate-500 mt-2">
                  We successfully connected to Supabase, but found no patient records. 

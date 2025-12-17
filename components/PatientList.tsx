@@ -29,35 +29,37 @@ export const PatientList: React.FC<PatientListProps> = ({ patients, onSelectPati
   };
 
   return (
-    <div className="p-8 max-w-7xl mx-auto h-full flex flex-col">
-      <div className="flex items-center justify-between mb-8">
+    <div className="p-4 md:p-8 max-w-7xl mx-auto h-full flex flex-col">
+      <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Inpatients Directory</h1>
           <p className="text-slate-500 mt-1">{filteredPatients.length} Active cases found</p>
         </div>
         
-        <div className="flex gap-3">
-          <div className="relative">
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative w-full sm:w-auto">
             <Search className="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
             <input 
               type="text"
               placeholder="Search by name, MRN..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none w-64 text-sm bg-white"
+              className="pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none w-full sm:w-64 text-sm bg-white"
             />
           </div>
-          <button className="flex items-center gap-2 px-4 py-2 border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-50 text-sm font-medium bg-white">
-            <Filter className="w-4 h-4" />
-            Filter
-          </button>
-          <button 
-            onClick={() => setIsAddModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-sm font-medium shadow-sm transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Add Patient
-          </button>
+          <div className="flex gap-3">
+            <button className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-50 text-sm font-medium bg-white">
+              <Filter className="w-4 h-4" />
+              Filter
+            </button>
+            <button 
+              onClick={() => setIsAddModalOpen(true)}
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-sm font-medium shadow-sm transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Add
+            </button>
+          </div>
         </div>
       </div>
 
