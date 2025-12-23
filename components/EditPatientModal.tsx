@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, Loader2, Pill, Zap, Activity, Plus, Trash2 } from 'lucide-react';
-import { Patient, PatientStatus, ChemoDrug } from '../types';
+import { X, Save, Loader2, Pill, Zap, Activity, Plus, Trash2, CheckCircle2, Circle } from 'lucide-react';
+import { Patient, PatientStatus, ChemoDrug, WorkflowStatus, RTWorkflow } from '../types';
 import { updatePatient } from '../services/patientService';
 
 interface EditPatientModalProps {
@@ -20,10 +20,9 @@ export const EditPatientModal: React.FC<EditPatientModalProps> = ({ patient, isO
   const [hasRadiation, setHasRadiation] = useState(!!patient.radiationPlan);
   const [hasChemo, setHasChemo] = useState(!!patient.chemoProtocol);
   
-  // Initialize or Reset form when patient changes or modal opens
   useEffect(() => {
     if (isOpen) {
-        setFormData(JSON.parse(JSON.stringify(patient))); // Deep copy to avoid mutating prop
+        setFormData(JSON.parse(JSON.stringify(patient))); 
         setHasRadiation(!!patient.radiationPlan);
         setHasChemo(!!patient.chemoProtocol);
         setError(null);
@@ -32,13 +31,11 @@ export const EditPatientModal: React.FC<EditPatientModalProps> = ({ patient, isO
 
   if (!isOpen) return null;
 
-  // Generic Change Handler for top-level fields
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  // Generic Change Handler for nested objects (Radiation/Chemo)
   const handleNestedChange = (
     section: 'radiationPlan' | 'chemoProtocol', 
     field: string, 
@@ -53,7 +50,52 @@ export const EditPatientModal: React.FC<EditPatientModalProps> = ({ patient, isO
     }));
   };
 
-  // Chemo Drug Management
+  const handleWorkflowChange = (stepKey: keyof RTWorkflow, field: string, value: any) => {
+    setFormData(prev => {
+      const currentWorkflow = prev.radiationPlan?.workflow || {
+        ctSimulation: { status: WorkflowStatus.PENDING },
+        contouring: { status: WorkflowStatus.PENDING },
+        contouringApproval: { status: WorkflowStatus.PENDING },
+        planApproval: { status: WorkflowStatus.PENDING }
+      };
+
+      return {
+        ...prev,
+        radiationPlan: {
+          ...prev.radiationPlan!,
+          workflow: {
+            ...currentWorkflow,
+            [stepKey]: {
+              ...currentWorkflow[stepKey],
+              [field]: value
+            }
+          }
+        }
+      };
+    });
+  };
+
+  const addFraction = () => {
+    const nextNum = (formData.radiationPlan?.dailyLog?.length || 0) + 1;
+    const newEntry = {
+      fractionNumber: nextNum,
+      date: new Date().toISOString().split('T')[0],
+      delivered: true,
+      physicistCheck: false,
+      skinReaction: 'None' as const
+    };
+
+    setFormData(prev => ({
+      ...prev,
+      radiationPlan: {
+        ...prev.radiationPlan!,
+        fractionsCompleted: prev.radiationPlan!.fractionsCompleted + 1,
+        lastFractionDate: newEntry.date,
+        dailyLog: [...(prev.radiationPlan?.dailyLog || []), newEntry]
+      }
+    }));
+  };
+
   const addDrug = () => {
       const newDrug: ChemoDrug = { name: '', dosage: '', route: 'IV' };
       setFormData(prev => ({
@@ -94,13 +136,10 @@ export const EditPatientModal: React.FC<EditPatientModalProps> = ({ patient, isO
     setLoading(true);
     setError(null);
 
-    // Prepare final object
     const finalPatient = { ...formData };
 
-    // Handle Radiation Logic
     if (hasRadiation) {
         if (!finalPatient.radiationPlan) {
-            // Initialize if it was null
             finalPatient.radiationPlan = {
                 id: Math.random().toString(36).substr(2, 9),
                 targetSite: '',
@@ -109,10 +148,16 @@ export const EditPatientModal: React.FC<EditPatientModalProps> = ({ patient, isO
                 fractionsTotal: 0,
                 fractionsCompleted: 0,
                 startDate: new Date().toISOString().split('T')[0],
-                endDate: 'TBD'
+                endDate: 'TBD',
+                workflow: {
+                  ctSimulation: { status: WorkflowStatus.PENDING },
+                  contouring: { status: WorkflowStatus.PENDING },
+                  contouringApproval: { status: WorkflowStatus.PENDING },
+                  planApproval: { status: WorkflowStatus.PENDING }
+                },
+                dailyLog: []
             };
         } else {
-           // Ensure numbers are numbers
            finalPatient.radiationPlan.totalDoseGy = Number(finalPatient.radiationPlan.totalDoseGy);
            finalPatient.radiationPlan.fractionsTotal = Number(finalPatient.radiationPlan.fractionsTotal);
            finalPatient.radiationPlan.fractionsCompleted = Number(finalPatient.radiationPlan.fractionsCompleted);
@@ -121,7 +166,6 @@ export const EditPatientModal: React.FC<EditPatientModalProps> = ({ patient, isO
         finalPatient.radiationPlan = undefined;
     }
 
-    // Handle Chemo Logic
     if (hasChemo) {
         if (!finalPatient.chemoProtocol) {
             finalPatient.chemoProtocol = {
@@ -154,7 +198,6 @@ export const EditPatientModal: React.FC<EditPatientModalProps> = ({ patient, isO
     setLoading(false);
   };
 
-  // Toggle helpers that initialize default empty state objects if needed for valid controlled inputs
   const toggleRadiation = (enabled: boolean) => {
       setHasRadiation(enabled);
       if (enabled && !formData.radiationPlan) {
@@ -168,7 +211,14 @@ export const EditPatientModal: React.FC<EditPatientModalProps> = ({ patient, isO
                   fractionsTotal: 0,
                   fractionsCompleted: 0,
                   startDate: '',
-                  endDate: ''
+                  endDate: '',
+                  workflow: {
+                    ctSimulation: { status: WorkflowStatus.PENDING },
+                    contouring: { status: WorkflowStatus.PENDING },
+                    contouringApproval: { status: WorkflowStatus.PENDING },
+                    planApproval: { status: WorkflowStatus.PENDING }
+                  },
+                  dailyLog: []
               }
           }));
       }
@@ -198,7 +248,6 @@ export const EditPatientModal: React.FC<EditPatientModalProps> = ({ patient, isO
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh]">
         
-        {/* Header */}
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
           <div>
              <h2 className="text-lg font-bold text-slate-900">Edit Patient Details</h2>
@@ -209,14 +258,12 @@ export const EditPatientModal: React.FC<EditPatientModalProps> = ({ patient, isO
           </button>
         </div>
 
-        {/* Tabs */}
-        <div className="px-6 py-3 border-b border-slate-100 flex gap-2">
+        <div className="px-6 py-3 border-b border-slate-100 flex gap-2 overflow-x-auto no-scrollbar">
             <button type="button" onClick={() => setActiveTab('general')} className={tabClass('general')}>General Info</button>
-            <button type="button" onClick={() => setActiveTab('radiation')} className={tabClass('radiation')}>Radiation Plan</button>
+            <button type="button" onClick={() => setActiveTab('radiation')} className={tabClass('radiation')}>Radiation Details</button>
             <button type="button" onClick={() => setActiveTab('chemo')} className={tabClass('chemo')}>Chemotherapy</button>
         </div>
 
-        {/* Form Content */}
         <form onSubmit={handleSubmit} className="p-6 overflow-y-auto custom-scrollbar flex-1">
           {error && (
             <div className="mb-6 p-4 bg-red-50 text-red-700 text-sm rounded-xl border border-red-100 flex items-center gap-2">
@@ -224,7 +271,6 @@ export const EditPatientModal: React.FC<EditPatientModalProps> = ({ patient, isO
             </div>
           )}
 
-          {/* GENERAL TAB */}
           {activeTab === 'general' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                  <div>
@@ -265,12 +311,11 @@ export const EditPatientModal: React.FC<EditPatientModalProps> = ({ patient, isO
             </div>
           )}
 
-          {/* RADIATION TAB */}
           {activeTab === 'radiation' && (
-            <div className="space-y-6">
+            <div className="space-y-8">
                 <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-xl border border-slate-200">
                     <Zap className="w-5 h-5 text-amber-500" />
-                    <span className="font-semibold text-slate-900">Include Radiation Plan</span>
+                    <span className="font-semibold text-slate-900">Enable Radiation Workflow</span>
                     <label className="relative inline-flex items-center cursor-pointer ml-auto">
                         <input type="checkbox" checked={hasRadiation} onChange={(e) => toggleRadiation(e.target.checked)} className="sr-only peer" />
                         <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
@@ -278,71 +323,114 @@ export const EditPatientModal: React.FC<EditPatientModalProps> = ({ patient, isO
                 </div>
 
                 {hasRadiation && formData.radiationPlan && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in duration-300">
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Target Site</label>
-                            <input 
-                                value={formData.radiationPlan.targetSite} 
-                                onChange={(e) => handleNestedChange('radiationPlan', 'targetSite', e.target.value)} 
-                                className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-amber-500" 
-                            />
+                    <>
+                      {/* Prescriptive Info */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 bg-slate-50 rounded-xl border border-slate-200">
+                          <div>
+                              <label className="block text-sm font-medium text-slate-700 mb-1">Target Site</label>
+                              <input 
+                                  value={formData.radiationPlan.targetSite} 
+                                  onChange={(e) => handleNestedChange('radiationPlan', 'targetSite', e.target.value)} 
+                                  className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white" 
+                              />
+                          </div>
+                          <div>
+                              <label className="block text-sm font-medium text-slate-700 mb-1">Total Dose (Gy)</label>
+                              <input 
+                                  type="number"
+                                  value={formData.radiationPlan.totalDoseGy} 
+                                  onChange={(e) => handleNestedChange('radiationPlan', 'totalDoseGy', e.target.value)} 
+                                  className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white" 
+                              />
+                          </div>
+                           <div>
+                              <label className="block text-sm font-medium text-slate-700 mb-1">Fractions Total</label>
+                              <input 
+                                  type="number"
+                                  value={formData.radiationPlan.fractionsTotal} 
+                                  onChange={(e) => handleNestedChange('radiationPlan', 'fractionsTotal', e.target.value)} 
+                                  className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white" 
+                              />
+                          </div>
+                           <div>
+                              <label className="block text-sm font-medium text-slate-700 mb-1">Fractions Completed</label>
+                              <input 
+                                  type="number"
+                                  value={formData.radiationPlan.fractionsCompleted} 
+                                  onChange={(e) => handleNestedChange('radiationPlan', 'fractionsCompleted', e.target.value)} 
+                                  className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white" 
+                              />
+                          </div>
+                      </div>
+
+                      {/* Workflow Editing */}
+                      <div className="space-y-4">
+                        <h4 className="text-sm font-bold text-slate-900 border-b border-slate-100 pb-2">Treatment Preparation Workflow</h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {[
+                            { label: 'CT Simulation', key: 'ctSimulation' },
+                            { label: 'Contouring', key: 'contouring' },
+                            { label: 'Contouring Approval', key: 'contouringApproval' },
+                            { label: 'Plan Approval', key: 'planApproval' }
+                          ].map((step) => {
+                            const stepData = formData.radiationPlan?.workflow?.[step.key as keyof RTWorkflow] || { status: WorkflowStatus.PENDING };
+                            return (
+                              <div key={step.key} className="p-4 border border-slate-200 rounded-xl space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500">{step.label}</span>
+                                  <select 
+                                    value={stepData.status} 
+                                    onChange={(e) => handleWorkflowChange(step.key as keyof RTWorkflow, 'status', e.target.value)}
+                                    className={`text-xs font-bold border rounded px-2 py-1 outline-none ${
+                                      stepData.status === WorkflowStatus.APPROVED || stepData.status === WorkflowStatus.COMPLETED ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                      stepData.status === WorkflowStatus.IN_PROGRESS ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-slate-50 text-slate-500'
+                                    }`}
+                                  >
+                                    {Object.values(WorkflowStatus).map(s => <option key={s} value={s}>{s}</option>)}
+                                  </select>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                  <input 
+                                    type="date"
+                                    value={stepData.date || ''}
+                                    onChange={(e) => handleWorkflowChange(step.key as keyof RTWorkflow, 'date', e.target.value)}
+                                    className="text-xs border border-slate-200 rounded px-2 py-1.5"
+                                  />
+                                  <input 
+                                    placeholder="Staff/Doctor"
+                                    value={stepData.staff || ''}
+                                    onChange={(e) => handleWorkflowChange(step.key as keyof RTWorkflow, 'staff', e.target.value)}
+                                    className="text-xs border border-slate-200 rounded px-2 py-1.5"
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Technique</label>
-                            <select 
-                                value={formData.radiationPlan.technique} 
-                                onChange={(e) => handleNestedChange('radiationPlan', 'technique', e.target.value)} 
-                                className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-amber-500"
-                            >
-                                <option value="3D-CRT">3D-CRT</option>
-                                <option value="IMRT">IMRT</option>
-                                <option value="VMAT">VMAT</option>
-                                <option value="SBRT">SBRT</option>
-                                <option value="Proton">Proton Therapy</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Total Dose (Gy)</label>
-                            <input 
-                                type="number"
-                                value={formData.radiationPlan.totalDoseGy} 
-                                onChange={(e) => handleNestedChange('radiationPlan', 'totalDoseGy', e.target.value)} 
-                                className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-amber-500" 
-                            />
-                        </div>
-                         <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Fractions Total</label>
-                            <input 
-                                type="number"
-                                value={formData.radiationPlan.fractionsTotal} 
-                                onChange={(e) => handleNestedChange('radiationPlan', 'fractionsTotal', e.target.value)} 
-                                className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-amber-500" 
-                            />
-                        </div>
-                         <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Fractions Completed</label>
-                            <input 
-                                type="number"
-                                value={formData.radiationPlan.fractionsCompleted} 
-                                onChange={(e) => handleNestedChange('radiationPlan', 'fractionsCompleted', e.target.value)} 
-                                className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-amber-500" 
-                            />
-                        </div>
-                         <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Start Date</label>
-                            <input 
-                                type="date"
-                                value={formData.radiationPlan.startDate} 
-                                onChange={(e) => handleNestedChange('radiationPlan', 'startDate', e.target.value)} 
-                                className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-amber-500" 
-                            />
-                        </div>
-                    </div>
+                      </div>
+
+                      {/* Fraction Entry Fast Actions */}
+                      <div className="p-4 bg-teal-50 rounded-xl border border-teal-100 flex items-center justify-between">
+                         <div className="flex items-center gap-3">
+                           <CheckCircle2 className="w-5 h-5 text-teal-600" />
+                           <div>
+                             <p className="text-sm font-bold text-teal-900">Record Treatment Session</p>
+                             <p className="text-xs text-teal-600">Quick log the next delivered fraction</p>
+                           </div>
+                         </div>
+                         <button 
+                           type="button" 
+                           onClick={addFraction}
+                           className="px-4 py-2 bg-teal-600 text-white rounded-lg text-sm font-bold shadow-sm hover:bg-teal-700"
+                         >
+                           Deliver Fraction #{ (formData.radiationPlan?.dailyLog?.length || 0) + 1 }
+                         </button>
+                      </div>
+                    </>
                 )}
             </div>
           )}
 
-          {/* CHEMO TAB */}
           {activeTab === 'chemo' && (
              <div className="space-y-6">
                  <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-xl border border-slate-200">
@@ -404,7 +492,6 @@ export const EditPatientModal: React.FC<EditPatientModalProps> = ({ patient, isO
                             </div>
                          </div>
 
-                         {/* Drugs List */}
                          <div className="bg-indigo-50 rounded-xl p-4 border border-indigo-100">
                              <div className="flex justify-between items-center mb-3">
                                  <h4 className="text-sm font-bold text-indigo-900">Protocol Drugs</h4>
@@ -448,7 +535,6 @@ export const EditPatientModal: React.FC<EditPatientModalProps> = ({ patient, isO
           )}
         </form>
 
-        {/* Footer */}
         <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
           <button 
             type="button" 

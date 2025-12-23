@@ -1,10 +1,39 @@
-
 export enum PatientStatus {
   STABLE = 'Stable',
   CRITICAL = 'Critical',
   RECOVERING = 'Recovering',
   DISCHARGE_READY = 'Discharge Ready',
   DISCHARGED = 'Discharged'
+}
+
+export enum WorkflowStatus {
+  PENDING = 'Pending',
+  IN_PROGRESS = 'In Progress',
+  COMPLETED = 'Completed',
+  APPROVED = 'Approved'
+}
+
+export interface RTWorkflowStep {
+  status: WorkflowStatus;
+  date?: string;
+  notes?: string;
+  staff?: string;
+}
+
+export interface RTWorkflow {
+  ctSimulation: RTWorkflowStep;
+  contouring: RTWorkflowStep;
+  contouringApproval: RTWorkflowStep;
+  planApproval: RTWorkflowStep;
+}
+
+export interface RTFractionEntry {
+  fractionNumber: number;
+  date: string;
+  delivered: boolean;
+  notes?: string;
+  physicistCheck: boolean;
+  skinReaction?: 'None' | 'Grade 1' | 'Grade 2' | 'Grade 3';
 }
 
 export interface RadiationPlan {
@@ -17,6 +46,8 @@ export interface RadiationPlan {
   startDate: string;
   endDate: string;
   lastFractionDate?: string;
+  workflow?: RTWorkflow;
+  dailyLog?: RTFractionEntry[];
 }
 
 export interface ChemoDrug {
