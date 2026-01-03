@@ -32,33 +32,30 @@ const saveLocalPatients = (patients: Patient[]) => {
 
 /**
  * Dynamic Schema Discovery
- * Inspects the table once to see which columns actually exist.
- * This prevents 'Could not find column' errors if the Supabase schema is incomplete.
+ * Inspects the table to see which columns actually exist to prevent 400 errors.
  */
 const getAvailableColumns = async (): Promise<string[]> => {
   if (cachedAvailableColumns) return cachedAvailableColumns;
   
   try {
-    // We select 0 rows just to get the column metadata from the first result
     const { data, error } = await supabase.from('patients').select('*').limit(1);
     if (error || !data) throw new Error("Metadata check failed");
     
-    cachedAvailableColumns = Object.keys(data[0] || {});
-    // If table is empty, we try to guess based on standard schema or return empty
+    cachedAvailableColumns = data.length > 0 ? Object.keys(data[0]) : [];
+    
     if (cachedAvailableColumns.length === 0) {
-        // Default expected columns if table is empty
+        // Safe default expected columns
         return ['id', 'mrn', 'name', 'age', 'gender', 'admission_date', 'diagnosis', 'status'];
     }
     return cachedAvailableColumns;
   } catch (err) {
-    console.warn("Schema discovery failed, falling back to safe defaults.");
     return ['id', 'mrn', 'name', 'age', 'gender', 'admission_date', 'diagnosis', 'status'];
   }
 };
 
 /**
  * Payload Filter
- * Removes keys from the payload that don't exist in the remote database.
+ * Removes keys from the payload that don't exist in the database.
  */
 const filterPayload = async (payload: any) => {
   const cols = await getAvailableColumns();
@@ -77,7 +74,6 @@ const filterPayload = async (payload: any) => {
 const mapDBToPatient = (row: any): Patient => {
   if (!row) throw new Error("Null data encountered in patient mapping");
   
-  // Resilient field mapping for various schema versions
   const notes = row.notes || row.clinical_notes || row.clinicalnotes || [];
   const dischargeDate = row.discharge_date || row.discharge_timestamp || undefined;
   
@@ -118,7 +114,6 @@ export const getPatients = async (): Promise<{ data: Patient[], isLocal: boolean
     
     return { data: mappedData, isLocal: false };
   } catch (err: any) {
-    console.warn("Cloud connection issue or schema mismatch. Using local ward cache.");
     return { data: getLocalPatients(), isLocal: true };
   }
 };
@@ -143,17 +138,15 @@ export const createPatient = async (patient: Omit<Patient, 'id'>): Promise<{ suc
     allergies: patient.allergies || [],
     image_url: patient.imageUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(patient.name)}&background=random`,
     notes: patient.clinicalNotes || [],
-    clinical_notes: patient.clinicalNotes || [] // Handle both common naming conventions
+    clinical_notes: patient.clinicalNotes || []
   };
 
   try {
     const dbRow = await filterPayload(rawRow);
     const { error } = await supabase.from('patients').insert([dbRow]);
-    
     if (error) throw new Error(error.message);
     return { success: true };
   } catch (err: any) {
-    // If cloud fails (connectivity or final schema issue), save to local only
     const local = getLocalPatients();
     const newPatient = { ...patient, id: `loc-${Math.random().toString(36).substr(2, 5)}` } as Patient;
     saveLocalPatients([newPatient, ...local]);
@@ -186,11 +179,7 @@ export const updatePatient = async (patient: Patient): Promise<{ success: boolea
 
   try {
     const dbRow = await filterPayload(rawRow);
-    const { error } = await supabase
-      .from('patients')
-      .update(dbRow)
-      .eq('id', patient.id);
-    
+    const { error } = await supabase.from('patients').update(dbRow).eq('id', patient.id);
     if (error) throw new Error(error.message);
     return { success: true };
   } catch (err: any) {
@@ -203,11 +192,7 @@ export const updatePatient = async (patient: Patient): Promise<{ success: boolea
 
 export const deletePatient = async (id: string): Promise<{ success: boolean; error?: string }> => {
   try {
-    const { error } = await supabase
-      .from('patients')
-      .delete()
-      .eq('id', id);
-
+    const { error } = await supabase.from('patients').delete().eq('id', id);
     if (error) throw new Error(error.message);
     return { success: true };
   } catch (err: any) {
