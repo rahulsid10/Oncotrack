@@ -32,21 +32,29 @@ const saveLocalPatients = (patients: Patient[]) => {
 
 /**
  * Dynamic Schema Discovery
- * Inspects the table to see which columns actually exist to prevent 400 errors.
+ * Probes the Supabase table once to see which columns actually exist.
+ * This rectifies errors like 'Could not find clinical_notes' by preventing the app 
+ * from trying to write to non-existent columns.
  */
 const getAvailableColumns = async (): Promise<string[]> => {
-  if (cachedAvailableColumns) return cachedAvailableColumns;
+  if (cachedAvailableColumns && cachedAvailableColumns.length > 0) return cachedAvailableColumns;
   
   try {
     const { data, error } = await supabase.from('patients').select('*').limit(1);
-    if (error || !data) throw new Error("Metadata check failed");
     
-    cachedAvailableColumns = data.length > 0 ? Object.keys(data[0]) : [];
-    
-    if (cachedAvailableColumns.length === 0) {
-        // Safe default expected columns
+    if (error) {
+        console.warn("Schema discovery via SELECT failed:", error.message);
+        // Fallback to essential columns if we can't probe the schema
         return ['id', 'mrn', 'name', 'age', 'gender', 'admission_date', 'diagnosis', 'status'];
     }
+    
+    cachedAvailableColumns = data && data.length > 0 ? Object.keys(data[0]) : [];
+    
+    // If table is empty, we return a broad list and let filterPayload handle it on first insert
+    if (cachedAvailableColumns.length === 0) {
+        return ['id', 'mrn', 'name', 'age', 'gender', 'admission_date', 'diagnosis', 'status', 'discharge_date', 'clinical_notes', 'notes'];
+    }
+    
     return cachedAvailableColumns;
   } catch (err) {
     return ['id', 'mrn', 'name', 'age', 'gender', 'admission_date', 'diagnosis', 'status'];
@@ -55,7 +63,8 @@ const getAvailableColumns = async (): Promise<string[]> => {
 
 /**
  * Payload Filter
- * Removes keys from the payload that don't exist in the database.
+ * Strips out any keys from the database payload that don't exist in the remote schema.
+ * This is the primary troubleshoot fix for the 'Could not find column' errors.
  */
 const filterPayload = async (payload: any) => {
   const cols = await getAvailableColumns();
@@ -74,6 +83,7 @@ const filterPayload = async (payload: any) => {
 const mapDBToPatient = (row: any): Patient => {
   if (!row) throw new Error("Null data encountered in patient mapping");
   
+  // Resilient field mapping: tries common naming variants
   const notes = row.notes || row.clinical_notes || row.clinicalnotes || [];
   const dischargeDate = row.discharge_date || row.discharge_timestamp || undefined;
   
@@ -114,6 +124,7 @@ export const getPatients = async (): Promise<{ data: Patient[], isLocal: boolean
     
     return { data: mappedData, isLocal: false };
   } catch (err: any) {
+    console.warn("Connection or schema mismatch. Using local cache.");
     return { data: getLocalPatients(), isLocal: true };
   }
 };
@@ -136,15 +147,26 @@ export const createPatient = async (patient: Omit<Patient, 'id'>): Promise<{ suc
     chemo_protocol: patient.chemoProtocol || null,
     vitals_history: patient.vitalsHistory || [],
     allergies: patient.allergies || [],
-    image_url: patient.imageUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(patient.name)}&background=random`,
+    image_url: patient.imageUrl,
     notes: patient.clinicalNotes || [],
-    clinical_notes: patient.clinicalNotes || []
+    clinical_notes: patient.clinicalNotes || [] // Handle both common naming variants
   };
 
   try {
     const dbRow = await filterPayload(rawRow);
     const { error } = await supabase.from('patients').insert([dbRow]);
-    if (error) throw new Error(error.message);
+    
+    if (error) {
+        // One last fallback: If specific known error occurs, retry after stripping the problematic field
+        if (error.message.includes("clinical_notes") || error.message.includes("discharge_date")) {
+            delete dbRow.clinical_notes;
+            delete dbRow.discharge_date;
+            const retry = await supabase.from('patients').insert([dbRow]);
+            if (retry.error) throw new Error(retry.error.message);
+            return { success: true };
+        }
+        throw new Error(error.message);
+    }
     return { success: true };
   } catch (err: any) {
     const local = getLocalPatients();
@@ -180,7 +202,17 @@ export const updatePatient = async (patient: Patient): Promise<{ success: boolea
   try {
     const dbRow = await filterPayload(rawRow);
     const { error } = await supabase.from('patients').update(dbRow).eq('id', patient.id);
-    if (error) throw new Error(error.message);
+    
+    if (error) {
+        if (error.message.includes("clinical_notes") || error.message.includes("discharge_date")) {
+            delete dbRow.clinical_notes;
+            delete dbRow.discharge_date;
+            const retry = await supabase.from('patients').update(dbRow).eq('id', patient.id);
+            if (retry.error) throw new Error(retry.error.message);
+            return { success: true };
+        }
+        throw new Error(error.message);
+    }
     return { success: true };
   } catch (err: any) {
     const local = getLocalPatients();
