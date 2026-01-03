@@ -1,19 +1,13 @@
 import { GoogleGenAI } from "@google/genai";
 import { Patient } from "../types";
 
-// Initialize Gemini
-// NOTE: We assume process.env.API_KEY is available.
-// In a real env, you would guard against missing keys.
-const apiKey = process.env.API_KEY || '';
-const ai = new GoogleGenAI({ apiKey });
+// Always use const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export const getPatientInsight = async (patient: Patient): Promise<string> => {
-  if (!apiKey) {
-    return "API Key is missing. Unable to generate AI insight.";
-  }
-
   try {
-    const model = 'gemini-2.5-flash';
+    // Select gemini-3-flash-preview for summarization tasks
+    const model = 'gemini-3-flash-preview';
     
     const prompt = `
       You are an expert oncology clinical assistant. 
@@ -42,6 +36,7 @@ export const getPatientInsight = async (patient: Patient): Promise<string> => {
       contents: prompt,
     });
 
+    // The .text property directly returns the generated string
     return response.text || "No insight generated.";
   } catch (error) {
     console.error("Gemini API Error:", error);

@@ -6,6 +6,12 @@ export enum PatientStatus {
   DISCHARGED = 'Discharged'
 }
 
+export enum RTIntent {
+  RADICAL = 'Radical',
+  ADJUVANT = 'Adjuvant',
+  PALLIATIVE = 'Palliative'
+}
+
 export enum WorkflowStatus {
   PENDING = 'Pending',
   IN_PROGRESS = 'In Progress',
@@ -40,6 +46,7 @@ export interface RadiationPlan {
   id: string;
   targetSite: string; // e.g., "Left Breast", "Prostate"
   technique: string; // e.g., "IMRT", "VMAT"
+  machine?: 'Versa HD' | 'Elekta Compac' | 'Other';
   totalDoseGy: number;
   fractionsTotal: number;
   fractionsCompleted: number;
@@ -92,10 +99,12 @@ export interface Patient {
   age: number;
   gender: 'Male' | 'Female' | 'Other';
   admissionDate: string;
+  dischargeDate?: string;
   diagnosis: string;
   stage: string; // e.g., "Stage IIB"
   roomNumber: string;
   status: PatientStatus;
+  intent?: RTIntent;
   attendingPhysician: string;
   radiationPlan?: RadiationPlan;
   chemoProtocol?: ChemoProtocol;

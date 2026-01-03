@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { Patient, PatientStatus, ClinicalNote, WorkflowStatus } from '../types';
+import { Patient, PatientStatus, ClinicalNote, WorkflowStatus, RTWorkflowStep, RTWorkflow, RTFractionEntry } from '../types';
 import { getPatientInsight } from '../services/geminiService';
 import { updatePatient, deletePatient } from '../services/patientService';
 import { 
   ArrowLeft, Brain, Zap, Pill, Activity, Calendar, 
-  AlertTriangle, Stethoscope, Sparkles, Thermometer, LogOut, Trash2, Loader2, Edit, Microscope, ImageIcon, ClipboardList, Clock, CheckCircle2, Circle, ListChecks, Info
+  AlertTriangle, Stethoscope, Sparkles, Thermometer, LogOut, Trash2, Loader2, Edit, Microscope, ImageIcon, ClipboardList, Clock, CheckCircle2, Circle, ListChecks, Info, User, StickyNote, Save, X
 } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
@@ -52,9 +52,22 @@ export const PatientDetail: React.FC<PatientDetailProps> = ({ patient, onBack, o
   const [discharging, setDischarging] = useState(false);
   const [deleting, setDeleting] = useState(false);
   
+  // Workflow Editing State
+  const [isEditingWorkflow, setIsEditingWorkflow] = useState(false);
+  const [workflowDraft, setWorkflowDraft] = useState<RTWorkflow | null>(null);
+  const [savingWorkflow, setSavingWorkflow] = useState(false);
+
+  // Daily Log Editing State
+  const [isEditingLog, setIsEditingLog] = useState(false);
+  const [logDraft, setLogDraft] = useState<RTFractionEntry[] | null>(null);
+  const [savingLog, setSavingLog] = useState(false);
+
   // Note Modal State
   const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
   const [noteType, setNoteType] = useState<'General' | 'Pathology' | 'Imaging'>('General');
+
+  // Hover state for workflow steps
+  const [hoveredStep, setHoveredStep] = useState<string | null>(null);
 
   const handleGenerateInsight = async () => {
     setLoadingInsight(true);
@@ -67,6 +80,96 @@ export const PatientDetail: React.FC<PatientDetailProps> = ({ patient, onBack, o
       if (onPatientUpdated) {
           onPatientUpdated(updatedPatient);
       }
+  };
+
+  const startEditingWorkflow = () => {
+    setWorkflowDraft(JSON.parse(JSON.stringify(patient.radiationPlan?.workflow || {
+      ctSimulation: { status: WorkflowStatus.PENDING },
+      contouring: { status: WorkflowStatus.PENDING },
+      contouringApproval: { status: WorkflowStatus.PENDING },
+      planApproval: { status: WorkflowStatus.PENDING }
+    })));
+    setIsEditingWorkflow(true);
+  };
+
+  const handleWorkflowFieldChange = (stepKey: keyof RTWorkflow, field: keyof RTWorkflowStep, value: any) => {
+    if (!workflowDraft) return;
+    setWorkflowDraft({
+      ...workflowDraft,
+      [stepKey]: {
+        ...workflowDraft[stepKey],
+        [field]: value
+      }
+    });
+  };
+
+  const saveWorkflow = async () => {
+    if (!workflowDraft || !patient.radiationPlan) return;
+    setSavingWorkflow(true);
+    
+    const updatedPatient: Patient = {
+      ...patient,
+      radiationPlan: {
+        ...patient.radiationPlan,
+        workflow: workflowDraft
+      }
+    };
+
+    const { success, error } = await updatePatient(updatedPatient);
+    if (success) {
+      if (onPatientUpdated) onPatientUpdated(updatedPatient);
+      setIsEditingWorkflow(false);
+      setWorkflowDraft(null);
+    } else {
+      alert("Failed to update workflow: " + error);
+    }
+    setSavingWorkflow(false);
+  };
+
+  const cancelWorkflowEdit = () => {
+    setIsEditingWorkflow(false);
+    setWorkflowDraft(null);
+  };
+
+  // Log Editing Handlers
+  const startEditingLog = () => {
+    setLogDraft(JSON.parse(JSON.stringify(patient.radiationPlan?.dailyLog || [])));
+    setIsEditingLog(true);
+  };
+
+  const handleLogFieldChange = (index: number, field: keyof RTFractionEntry, value: any) => {
+    if (!logDraft) return;
+    const newDraft = [...logDraft];
+    newDraft[index] = { ...newDraft[index], [field]: value };
+    setLogDraft(newDraft);
+  };
+
+  const saveLogChanges = async () => {
+    if (!logDraft || !patient.radiationPlan) return;
+    setSavingLog(true);
+
+    const updatedPatient: Patient = {
+      ...patient,
+      radiationPlan: {
+        ...patient.radiationPlan,
+        dailyLog: logDraft
+      }
+    };
+
+    const { success, error } = await updatePatient(updatedPatient);
+    if (success) {
+      if (onPatientUpdated) onPatientUpdated(updatedPatient);
+      setIsEditingLog(false);
+      setLogDraft(null);
+    } else {
+      alert("Failed to update daily log: " + error);
+    }
+    setSavingLog(false);
+  };
+
+  const cancelLogEdit = () => {
+    setIsEditingLog(false);
+    setLogDraft(null);
   };
 
   const handleAddNote = async (note: ClinicalNote) => {
@@ -110,7 +213,11 @@ export const PatientDetail: React.FC<PatientDetailProps> = ({ patient, onBack, o
   const handleDischarge = async () => {
       if (window.confirm(`Are you sure you want to discharge ${patient.name}? This will move the patient to the Discharge Log.`)) {
           setDischarging(true);
-          const updated = { ...patient, status: PatientStatus.DISCHARGED };
+          const updated: Patient = { 
+            ...patient, 
+            status: PatientStatus.DISCHARGED,
+            dischargeDate: new Date().toISOString().split('T')[0] // Set discharge timestamp
+          };
           const { success } = await updatePatient(updated);
           
           if (success) {
@@ -331,42 +438,173 @@ export const PatientDetail: React.FC<PatientDetailProps> = ({ patient, onBack, o
                       <div className="flex justify-between items-start mb-6">
                         <h3 className="font-semibold text-slate-900 flex items-center gap-2">
                           <Zap className="w-5 h-5 text-amber-500" />
-                          Radiation Therapy Details
+                          Radiation Therapy Preparation
                         </h3>
-                        <span className="bg-amber-50 text-amber-700 text-xs font-medium px-2 py-1 rounded-lg border border-amber-100">
-                          {patient.radiationPlan.technique}
-                        </span>
+                        {!isEditingWorkflow ? (
+                          <button 
+                            onClick={startEditingWorkflow}
+                            className="px-4 py-1.5 bg-teal-50 text-teal-700 hover:bg-teal-100 border border-teal-200 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm"
+                          >
+                            <Edit className="w-3.5 h-3.5" />
+                            Update Workflow
+                          </button>
+                        ) : (
+                          <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-2">
+                             <button 
+                                onClick={saveWorkflow}
+                                disabled={savingWorkflow}
+                                className="text-xs font-bold text-white bg-teal-600 hover:bg-teal-700 px-4 py-1.5 rounded-lg flex items-center gap-1.5 shadow-md shadow-teal-600/20 disabled:opacity-50 transition-all active:scale-95"
+                             >
+                               {savingWorkflow ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                               Save
+                             </button>
+                             <button 
+                                onClick={cancelWorkflowEdit}
+                                className="text-xs font-bold text-slate-600 hover:bg-slate-100 px-4 py-1.5 rounded-lg flex items-center gap-1.5 border border-slate-200 bg-white transition-all active:scale-95"
+                             >
+                               <X className="w-3.5 h-3.5" />
+                               Cancel
+                             </button>
+                          </div>
+                        )}
                       </div>
 
                       {/* RT Workflow Timeline */}
-                      <div className="mb-8 overflow-x-auto pb-4">
-                        <div className="min-w-[600px] relative flex justify-between">
-                          <div className="absolute top-5 left-4 right-4 h-0.5 bg-slate-100 -z-10" />
-                          {[
-                            { label: 'CT Sim', key: 'ctSimulation' },
-                            { label: 'Contouring', key: 'contouring' },
-                            { label: 'Contour Appr.', key: 'contouringApproval' },
-                            { label: 'Plan Appr.', key: 'planApproval' }
-                          ].map((step, idx) => {
-                            const stepData = patient.radiationPlan?.workflow?.[step.key as keyof typeof patient.radiationPlan.workflow];
-                            const status = stepData?.status || WorkflowStatus.PENDING;
-                            return (
-                              <div key={step.key} className="flex flex-col items-center px-2">
-                                <div className={`w-10 h-10 rounded-full bg-white border-2 flex items-center justify-center mb-2 shadow-sm
-                                  ${status === WorkflowStatus.APPROVED || status === WorkflowStatus.COMPLETED ? 'border-emerald-500' : 
-                                    status === WorkflowStatus.IN_PROGRESS ? 'border-blue-500' : 'border-slate-200'}
-                                `}>
-                                  {getWorkflowIcon(status)}
+                      {!isEditingWorkflow ? (
+                        <div className="mb-10 relative">
+                          <div className="flex justify-between relative">
+                            <div className="absolute top-5 left-4 right-4 h-0.5 bg-slate-100 -z-10" />
+                            {[
+                              { label: 'CT Sim', key: 'ctSimulation' },
+                              { label: 'Contouring', key: 'contouring' },
+                              { label: 'Contour Appr.', key: 'contouringApproval' },
+                              { label: 'Plan Appr.', key: 'planApproval' }
+                            ].map((step, idx) => {
+                              const stepData = patient.radiationPlan?.workflow?.[step.key as keyof typeof patient.radiationPlan.workflow] as RTWorkflowStep;
+                              const status = stepData?.status || WorkflowStatus.PENDING;
+                              return (
+                                <div 
+                                  key={step.key} 
+                                  className="flex flex-col items-center px-2 cursor-help group relative"
+                                  onMouseEnter={() => setHoveredStep(step.key)}
+                                  onMouseLeave={() => setHoveredStep(null)}
+                                >
+                                  <div className={`w-10 h-10 rounded-full bg-white border-2 flex items-center justify-center mb-2 shadow-sm transition-all
+                                    ${status === WorkflowStatus.APPROVED || status === WorkflowStatus.COMPLETED ? 'border-emerald-500 scale-110' : 
+                                      status === WorkflowStatus.IN_PROGRESS ? 'border-blue-500' : 'border-slate-200'}
+                                  `}>
+                                    {getWorkflowIcon(status)}
+                                  </div>
+                                  <span className="text-xs font-bold text-slate-900 whitespace-nowrap">{step.label}</span>
+                                  
+                                  {/* Rich Hover Info Panel */}
+                                  {hoveredStep === step.key && stepData && (
+                                    <div className="absolute bottom-full mb-4 z-20 w-56 bg-slate-900 text-white p-4 rounded-xl shadow-2xl text-xs animate-in fade-in slide-in-from-bottom-2">
+                                      <div className="flex justify-between items-start mb-3">
+                                        <span className="font-black text-teal-400 uppercase tracking-widest text-[10px]">{step.label}</span>
+                                        {stepData.date && <span className="text-[10px] text-slate-400 font-medium">{stepData.date}</span>}
+                                      </div>
+                                      <div className="space-y-2.5">
+                                        <div className="flex items-center gap-2">
+                                          <div className="p-1 bg-white/10 rounded">
+                                            <User className="w-3 h-3 text-teal-300" />
+                                          </div>
+                                          <span className="font-medium truncate">{stepData.staff || 'Staff Not Assigned'}</span>
+                                        </div>
+                                        <div className="flex items-start gap-2">
+                                          <div className="p-1 bg-white/10 rounded mt-0.5">
+                                            <StickyNote className="w-3 h-3 text-teal-300" />
+                                          </div>
+                                          <p className="leading-relaxed text-slate-300 italic line-clamp-3">
+                                            {stepData.notes || 'No clinical notes recorded for this stage.'}
+                                          </p>
+                                        </div>
+                                      </div>
+                                      <div className="absolute top-full left-1/2 -translate-x-1/2 w-3 h-3 bg-slate-900 rotate-45 -mt-1.5" />
+                                    </div>
+                                  )}
                                 </div>
-                                <span className="text-xs font-bold text-slate-900 whitespace-nowrap">{step.label}</span>
-                                <span className={`text-[10px] mt-0.5 font-medium
-                                  ${status === WorkflowStatus.APPROVED || status === WorkflowStatus.COMPLETED ? 'text-emerald-600' : 
-                                    status === WorkflowStatus.IN_PROGRESS ? 'text-blue-600' : 'text-slate-400'}
-                                `}>{status}</span>
-                                {stepData?.staff && <span className="text-[9px] text-slate-400 mt-0.5">{stepData.staff}</span>}
-                              </div>
-                            );
-                          })}
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-10 animate-in fade-in slide-in-from-top-2">
+                           {[
+                            { label: 'CT Simulation', key: 'ctSimulation' },
+                            { label: 'Contouring', key: 'contouring' },
+                            { label: 'Contouring Approval', key: 'contouringApproval' },
+                            { label: 'Plan Approval', key: 'planApproval' }
+                           ].map((step) => {
+                             const data = workflowDraft?.[step.key as keyof RTWorkflow] || { status: WorkflowStatus.PENDING };
+                             return (
+                               <div key={step.key} className="p-5 border border-slate-200 rounded-2xl bg-white space-y-4 shadow-sm hover:border-teal-400 transition-colors group">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-xs font-black text-slate-500 uppercase tracking-widest group-hover:text-teal-600 transition-colors">{step.label}</span>
+                                    <select 
+                                      value={data.status}
+                                      onChange={(e) => handleWorkflowFieldChange(step.key as keyof RTWorkflow, 'status', e.target.value as WorkflowStatus)}
+                                      className={`text-[11px] font-bold border rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-teal-500 transition-all ${
+                                        data.status === WorkflowStatus.APPROVED || data.status === WorkflowStatus.COMPLETED ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                        data.status === WorkflowStatus.IN_PROGRESS ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-slate-50 text-slate-600 border-slate-200'
+                                      }`}
+                                    >
+                                      {Object.values(WorkflowStatus).map(s => <option key={s} value={s}>{s}</option>)}
+                                    </select>
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-1.5">
+                                      <label className="text-[10px] font-bold text-slate-400 uppercase flex items-center gap-1">
+                                        <Calendar className="w-2.5 h-2.5" /> Date
+                                      </label>
+                                      <input 
+                                        type="date"
+                                        value={data.date || ''}
+                                        onChange={(e) => handleWorkflowFieldChange(step.key as keyof RTWorkflow, 'date', e.target.value)}
+                                        className="text-xs border border-slate-200 rounded-xl px-3 py-2.5 w-full bg-slate-50 hover:bg-white focus:bg-white outline-none focus:ring-2 focus:ring-teal-500 transition-all"
+                                      />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                      <label className="text-[10px] font-bold text-slate-400 uppercase flex items-center gap-1">
+                                        <User className="w-2.5 h-2.5" /> Staff
+                                      </label>
+                                      <input 
+                                        placeholder="Physician/Tech"
+                                        value={data.staff || ''}
+                                        onChange={(e) => handleWorkflowFieldChange(step.key as keyof RTWorkflow, 'staff', e.target.value)}
+                                        className="text-xs border border-slate-200 rounded-xl px-3 py-2.5 w-full bg-slate-50 hover:bg-white focus:bg-white outline-none focus:ring-2 focus:ring-teal-500 transition-all"
+                                      />
+                                    </div>
+                                  </div>
+                                  <div className="space-y-1.5">
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase flex items-center gap-1">
+                                      <StickyNote className="w-2.5 h-2.5" /> Clinical Notes
+                                    </label>
+                                    <textarea 
+                                      placeholder="Record details about simulation setup, contouring decisions, or planning constraints..."
+                                      value={data.notes || ''}
+                                      onChange={(e) => handleWorkflowFieldChange(step.key as keyof RTWorkflow, 'notes', e.target.value)}
+                                      className="text-xs border border-slate-200 rounded-xl px-3 py-2.5 w-full h-24 resize-none bg-slate-50 hover:bg-white focus:bg-white outline-none focus:ring-2 focus:ring-teal-500 transition-all"
+                                    />
+                                  </div>
+                               </div>
+                             );
+                           })}
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+                        <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                          <p className="text-slate-500 text-xs uppercase font-bold tracking-wider mb-1">Target Site</p>
+                          <p className="font-bold text-slate-800">{patient.radiationPlan.targetSite}</p>
+                        </div>
+                        <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                          <p className="text-slate-500 text-xs uppercase font-bold tracking-wider mb-1">Total Dose</p>
+                          <p className="font-bold text-slate-800">{patient.radiationPlan.totalDoseGy} Gy</p>
+                        </div>
+                        <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                          <p className="text-slate-500 text-xs uppercase font-bold tracking-wider mb-1">Technique</p>
+                          <p className="font-bold text-slate-800">{patient.radiationPlan.technique}</p>
                         </div>
                       </div>
 
@@ -385,21 +623,6 @@ export const PatientDetail: React.FC<PatientDetailProps> = ({ patient, onBack, o
                           />
                         </div>
                       </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
-                        <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
-                          <p className="text-slate-500 text-xs">Target Site</p>
-                          <p className="font-semibold text-slate-800">{patient.radiationPlan.targetSite}</p>
-                        </div>
-                        <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
-                          <p className="text-slate-500 text-xs">Total Dose</p>
-                          <p className="font-semibold text-slate-800">{patient.radiationPlan.totalDoseGy} Gy</p>
-                        </div>
-                        <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
-                          <p className="text-slate-500 text-xs">Fractionation</p>
-                          <p className="font-semibold text-slate-800">{(patient.radiationPlan.totalDoseGy / patient.radiationPlan.fractionsTotal).toFixed(2)} Gy / Fx</p>
-                        </div>
-                      </div>
                     </div>
 
                     {/* Daily Fraction Log */}
@@ -409,9 +632,34 @@ export const PatientDetail: React.FC<PatientDetailProps> = ({ patient, onBack, o
                           <ListChecks className="w-5 h-5 text-slate-500" />
                           Daily Treatment Log
                         </h3>
-                        <div className="flex items-center gap-2 text-xs text-slate-400">
-                           <Info className="w-3.5 h-3.5" />
-                           <span>Last verified by physics on {patient.radiationPlan.lastFractionDate}</span>
+                        <div className="flex items-center gap-2">
+                          {!isEditingLog ? (
+                             <button 
+                               onClick={startEditingLog}
+                               className="px-3 py-1 bg-teal-50 text-teal-700 hover:bg-teal-100 border border-teal-200 rounded-lg text-xs font-bold flex items-center gap-1.5"
+                             >
+                               <Edit className="w-3.5 h-3.5" />
+                               Update Logs
+                             </button>
+                          ) : (
+                            <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-2">
+                               <button 
+                                  onClick={saveLogChanges}
+                                  disabled={savingLog}
+                                  className="text-xs font-bold text-white bg-teal-600 hover:bg-teal-700 px-4 py-1.5 rounded-lg flex items-center gap-1.5 shadow-md shadow-teal-600/20 disabled:opacity-50"
+                               >
+                                 {savingLog ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                                 Save
+                               </button>
+                               <button 
+                                  onClick={cancelLogEdit}
+                                  className="text-xs font-bold text-slate-600 hover:bg-slate-100 px-4 py-1.5 rounded-lg flex items-center gap-1.5 border border-slate-200 bg-white"
+                               >
+                                 <X className="w-3.5 h-3.5" />
+                                 Cancel
+                               </button>
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -422,14 +670,14 @@ export const PatientDetail: React.FC<PatientDetailProps> = ({ patient, onBack, o
                                <th className="px-4 py-3 font-medium">Fx</th>
                                <th className="px-4 py-3 font-medium">Date</th>
                                <th className="px-4 py-3 font-medium">Status</th>
-                               <th className="px-4 py-3 font-medium">Physics Check</th>
-                               <th className="px-4 py-3 font-medium">Skin/Toxicities</th>
+                               <th className="px-4 py-3 font-medium">Physicist Check</th>
+                               <th className="px-4 py-3 font-medium">Skin Reaction</th>
                                <th className="px-4 py-3 font-medium">Notes</th>
                              </tr>
                            </thead>
                            <tbody className="divide-y divide-slate-100">
-                             {patient.radiationPlan.dailyLog && patient.radiationPlan.dailyLog.length > 0 ? (
-                               patient.radiationPlan.dailyLog.map((entry, i) => (
+                             {(isEditingLog ? logDraft : patient.radiationPlan.dailyLog)?.length ? (
+                               (isEditingLog ? logDraft! : patient.radiationPlan.dailyLog!).map((entry, i) => (
                                  <tr key={i} className="hover:bg-slate-50 transition-colors">
                                    <td className="px-4 py-3 font-bold text-slate-900">{entry.fractionNumber}</td>
                                    <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{entry.date}</td>
@@ -439,18 +687,54 @@ export const PatientDetail: React.FC<PatientDetailProps> = ({ patient, onBack, o
                                       </span>
                                    </td>
                                    <td className="px-4 py-3">
-                                      {entry.physicistCheck ? (
-                                        <span className="text-teal-600 font-bold text-xs flex items-center gap-1">Verified</span>
+                                      {isEditingLog ? (
+                                        <div className="flex items-center gap-2">
+                                          <input 
+                                            type="checkbox"
+                                            checked={entry.physicistCheck}
+                                            onChange={(e) => handleLogFieldChange(i, 'physicistCheck', e.target.checked)}
+                                            className="w-4 h-4 text-teal-600 rounded focus:ring-teal-500"
+                                          />
+                                          <span className="text-[10px] font-bold text-slate-500 uppercase">Verified</span>
+                                        </div>
                                       ) : (
-                                        <span className="text-amber-500 font-bold text-xs">Pending</span>
+                                        entry.physicistCheck ? (
+                                          <span className="text-teal-600 font-bold text-xs flex items-center gap-1">Verified</span>
+                                        ) : (
+                                          <span className="text-amber-500 font-bold text-xs">Pending</span>
+                                        )
                                       )}
                                    </td>
                                    <td className="px-4 py-3">
-                                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${entry.skinReaction === 'None' ? 'bg-slate-100 text-slate-600' : 'bg-rose-100 text-rose-700'}`}>
-                                        {entry.skinReaction || 'N/A'}
-                                      </span>
+                                      {isEditingLog ? (
+                                        <select 
+                                          value={entry.skinReaction || 'None'}
+                                          onChange={(e) => handleLogFieldChange(i, 'skinReaction', e.target.value)}
+                                          className="text-xs bg-white border border-slate-200 rounded px-2 py-1 outline-none focus:ring-2 focus:ring-teal-500"
+                                        >
+                                          <option value="None">None</option>
+                                          <option value="Grade 1">Grade 1</option>
+                                          <option value="Grade 2">Grade 2</option>
+                                          <option value="Grade 3">Grade 3</option>
+                                        </select>
+                                      ) : (
+                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${entry.skinReaction === 'None' ? 'bg-slate-100 text-slate-600' : 'bg-rose-100 text-rose-700'}`}>
+                                          {entry.skinReaction || 'N/A'}
+                                        </span>
+                                      )}
                                    </td>
-                                   <td className="px-4 py-3 text-slate-500 italic max-w-xs truncate">{entry.notes || '-'}</td>
+                                   <td className="px-4 py-3">
+                                      {isEditingLog ? (
+                                        <input 
+                                          value={entry.notes || ''}
+                                          onChange={(e) => handleLogFieldChange(i, 'notes', e.target.value)}
+                                          className="text-xs border border-slate-200 rounded px-3 py-1 w-full max-w-[200px] outline-none focus:ring-2 focus:ring-teal-500"
+                                          placeholder="Fraction notes..."
+                                        />
+                                      ) : (
+                                        <span className="text-slate-500 italic max-w-xs truncate">{entry.notes || '-'}</span>
+                                      )}
+                                   </td>
                                  </tr>
                                ))
                              ) : (

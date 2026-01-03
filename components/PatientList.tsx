@@ -32,7 +32,7 @@ export const PatientList: React.FC<PatientListProps> = ({ patients, onSelectPati
     <div className="p-4 md:p-8 max-w-7xl mx-auto h-full flex flex-col">
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Inpatients Directory</h1>
+          <h1 className="text-2xl font-bold text-slate-900">RT Patients Directory</h1>
           <p className="text-slate-500 mt-1">{filteredPatients.length} Active cases found</p>
         </div>
         
@@ -69,6 +69,7 @@ export const PatientList: React.FC<PatientListProps> = ({ patients, onSelectPati
             key={patient.id} 
             patient={patient} 
             onClick={() => onSelectPatient(patient)} 
+            onRefresh={onRefresh}
           />
         ))}
       </div>

@@ -1,5 +1,4 @@
-
-import { Patient, PatientStatus } from './types';
+import { Patient, PatientStatus, WorkflowStatus, RTIntent } from './types';
 
 const generateVitals = (days: number) => {
   const vitals = [];
@@ -31,6 +30,7 @@ export const MOCK_PATIENTS: Patient[] = [
     stage: 'Stage IIA',
     roomNumber: '304-A',
     status: PatientStatus.STABLE,
+    intent: RTIntent.ADJUVANT,
     attendingPhysician: 'Dr. Sarah Chen',
     imageUrl: 'https://picsum.photos/id/64/200/200',
     allergies: ['Penicillin', 'Sulfa'],
@@ -39,12 +39,26 @@ export const MOCK_PATIENTS: Patient[] = [
       id: 'r1',
       targetSite: 'Left Breast',
       technique: '3D-CRT',
+      machine: 'Versa HD',
       totalDoseGy: 50,
       fractionsTotal: 25,
       fractionsCompleted: 18,
       startDate: '2023-10-20',
       endDate: '2023-11-25',
       lastFractionDate: '2023-11-14',
+      workflow: {
+        ctSimulation: { status: WorkflowStatus.COMPLETED, date: '2023-10-16', staff: 'Tech. Rogers', notes: 'Prone position, breast board used.' },
+        contouring: { status: WorkflowStatus.COMPLETED, date: '2023-10-17', staff: 'Dr. Chen', notes: 'GTV and CTV-p defined.' },
+        contouringApproval: { status: WorkflowStatus.APPROVED, date: '2023-10-18', staff: 'Dr. Miller', notes: 'Peer reviewed, contours approved.' },
+        planApproval: { status: WorkflowStatus.APPROVED, date: '2023-10-19', staff: 'Phys. Wong', notes: 'DVH constraints met, 2-field tangent plan.' }
+      },
+      dailyLog: Array.from({ length: 18 }, (_, i) => ({
+        fractionNumber: i + 1,
+        date: new Date(2023, 9, 20 + i).toISOString().split('T')[0],
+        delivered: true,
+        physicistCheck: true,
+        skinReaction: i > 10 ? 'Grade 1' : 'None'
+      }))
     },
     chemoProtocol: {
       id: 'c1',
@@ -72,6 +86,7 @@ export const MOCK_PATIENTS: Patient[] = [
     stage: 'Stage IIIB',
     roomNumber: '305-B',
     status: PatientStatus.CRITICAL,
+    intent: RTIntent.PALLIATIVE,
     attendingPhysician: 'Dr. Marcus Webb',
     imageUrl: 'https://picsum.photos/id/91/200/200',
     allergies: ['Latex'],
@@ -80,87 +95,27 @@ export const MOCK_PATIENTS: Patient[] = [
       id: 'r2',
       targetSite: 'Right Lung Upper Lobe',
       technique: 'IMRT',
+      machine: 'Elekta Compac',
       totalDoseGy: 60,
       fractionsTotal: 30,
       fractionsCompleted: 5,
       startDate: '2023-11-05',
       endDate: '2023-12-15',
       lastFractionDate: '2023-11-10',
+      workflow: {
+        ctSimulation: { status: WorkflowStatus.COMPLETED, date: '2023-11-02', staff: 'Tech. Smith', notes: '4DCT for respiratory gating.' },
+        contouring: { status: WorkflowStatus.IN_PROGRESS, date: '2023-11-03', staff: 'Dr. Webb', notes: 'ITV creation from 4DCT phases.' },
+        contouringApproval: { status: WorkflowStatus.PENDING },
+        planApproval: { status: WorkflowStatus.PENDING }
+      },
+      dailyLog: Array.from({ length: 5 }, (_, i) => ({
+        fractionNumber: i + 1,
+        date: new Date(2023, 10, 5 + i).toISOString().split('T')[0],
+        delivered: true,
+        physicistCheck: true,
+        skinReaction: 'None'
+      }))
     },
-    // No chemo for this patient yet, simulating concurrent RT setup phase
     vitalsHistory: generateVitals(7).map(v => ({...v, spo2: 88 + Math.random() * 4, heartRate: 90 + Math.random() * 20})),
-  },
-  {
-    id: '3',
-    mrn: 'ONC-2024-088',
-    name: 'Lydia Deetz',
-    age: 45,
-    gender: 'Female',
-    admissionDate: '2023-09-20',
-    diagnosis: 'Glioblastoma Multiforme',
-    stage: 'Grade IV',
-    roomNumber: 'ICU-02',
-    status: PatientStatus.RECOVERING,
-    attendingPhysician: 'Dr. Sarah Chen',
-    imageUrl: 'https://picsum.photos/id/338/200/200',
-    allergies: ['None'],
-    clinicalNotes: [],
-    radiationPlan: {
-      id: 'r3',
-      targetSite: 'Brain',
-      technique: 'VMAT',
-      totalDoseGy: 60,
-      fractionsTotal: 30,
-      fractionsCompleted: 29,
-      startDate: '2023-09-25',
-      endDate: '2023-11-06',
-      lastFractionDate: '2023-11-05',
-    },
-    chemoProtocol: {
-      id: 'c3',
-      protocolName: 'Temozolomide',
-      cycleCurrent: 1,
-      cycleTotal: 6,
-      cycleFrequencyDays: 28,
-      nextCycleDate: '2023-12-01',
-      lastAdministeredDate: '2023-11-03',
-      drugs: [
-        { name: 'Temozolomide', dosage: '75 mg/m2', route: 'Oral' },
-      ],
-      notes: 'Concurrent with RT phase.'
-    },
-    vitalsHistory: generateVitals(7),
-  },
-  {
-    id: '4',
-    mrn: 'ONC-2024-112',
-    name: 'Roderick Usher',
-    age: 64,
-    gender: 'Male',
-    admissionDate: '2023-11-10',
-    diagnosis: 'Colorectal Cancer',
-    stage: 'Stage III',
-    roomNumber: '302-A',
-    status: PatientStatus.DISCHARGE_READY,
-    attendingPhysician: 'Dr. Marcus Webb',
-    imageUrl: 'https://picsum.photos/id/100/200/200',
-    allergies: ['Contrast Dye'],
-    clinicalNotes: [],
-    chemoProtocol: {
-      id: 'c4',
-      protocolName: 'FOLFOX',
-      cycleCurrent: 12,
-      cycleTotal: 12,
-      cycleFrequencyDays: 14,
-      nextCycleDate: 'N/A', // Completed
-      lastAdministeredDate: '2023-11-12',
-      drugs: [
-        { name: 'Oxaliplatin', dosage: '85 mg/m2', route: 'IV' },
-        { name: 'Leucovorin', dosage: '400 mg/m2', route: 'IV' },
-        { name: 'Fluorouracil', dosage: '400 mg/m2', route: 'IV Bolus' },
-      ],
-      notes: 'Final cycle completed successfully.'
-    },
-    vitalsHistory: generateVitals(7),
   }
 ];

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, Loader2, Pill, Zap, Activity, Plus, Trash2, CheckCircle2, Circle } from 'lucide-react';
-import { Patient, PatientStatus, ChemoDrug, WorkflowStatus, RTWorkflow } from '../types';
+import { X, Save, Loader2, Pill, Zap, Activity, Plus, Trash2, CheckCircle2, Circle, User, StickyNote, Calendar } from 'lucide-react';
+import { Patient, PatientStatus, ChemoDrug, WorkflowStatus, RTWorkflow, RTIntent } from '../types';
 import { updatePatient } from '../services/patientService';
 
 interface EditPatientModalProps {
@@ -89,7 +89,7 @@ export const EditPatientModal: React.FC<EditPatientModalProps> = ({ patient, isO
       ...prev,
       radiationPlan: {
         ...prev.radiationPlan!,
-        fractionsCompleted: prev.radiationPlan!.fractionsCompleted + 1,
+        fractionsCompleted: (prev.radiationPlan?.fractionsCompleted || 0) + 1,
         lastFractionDate: newEntry.date,
         dailyLog: [...(prev.radiationPlan?.dailyLog || []), newEntry]
       }
@@ -143,7 +143,8 @@ export const EditPatientModal: React.FC<EditPatientModalProps> = ({ patient, isO
             finalPatient.radiationPlan = {
                 id: Math.random().toString(36).substr(2, 9),
                 targetSite: '',
-                technique: '3D-CRT',
+                technique: 'VMAT',
+                machine: 'Versa HD',
                 totalDoseGy: 0,
                 fractionsTotal: 0,
                 fractionsCompleted: 0,
@@ -206,7 +207,8 @@ export const EditPatientModal: React.FC<EditPatientModalProps> = ({ patient, isO
               radiationPlan: {
                   id: 'temp',
                   targetSite: '',
-                  technique: '3D-CRT',
+                  technique: 'VMAT',
+                  machine: 'Versa HD',
                   totalDoseGy: 0,
                   fractionsTotal: 0,
                   fractionsCompleted: 0,
@@ -277,9 +279,19 @@ export const EditPatientModal: React.FC<EditPatientModalProps> = ({ patient, isO
                     <label className="block text-sm font-medium text-slate-700 mb-1">Diagnosis</label>
                     <input name="diagnosis" value={formData.diagnosis} onChange={handleChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-teal-500" />
                  </div>
-                 <div>
+                 <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">RT Intent</label>
+                    <select name="intent" value={formData.intent} onChange={handleChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-teal-500">
+                      <option value={RTIntent.RADICAL}>Radical</option>
+                      <option value={RTIntent.ADJUVANT}>Adjuvant</option>
+                      <option value={RTIntent.PALLIATIVE}>Palliative</option>
+                    </select>
+                  </div>
+                  <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Stage</label>
                     <input name="stage" value={formData.stage} onChange={handleChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-teal-500" />
+                  </div>
                  </div>
                  <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Room Number</label>
@@ -335,6 +347,18 @@ export const EditPatientModal: React.FC<EditPatientModalProps> = ({ patient, isO
                               />
                           </div>
                           <div>
+                              <label className="block text-sm font-medium text-slate-700 mb-1">Treatment Machine</label>
+                              <select 
+                                  value={formData.radiationPlan.machine || 'Versa HD'} 
+                                  onChange={(e) => handleNestedChange('radiationPlan', 'machine', e.target.value)} 
+                                  className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white" 
+                              >
+                                  <option value="Versa HD">Versa HD</option>
+                                  <option value="Elekta Compac">Elekta Compac</option>
+                                  <option value="Other">Other</option>
+                              </select>
+                          </div>
+                          <div>
                               <label className="block text-sm font-medium text-slate-700 mb-1">Total Dose (Gy)</label>
                               <input 
                                   type="number"
@@ -365,8 +389,11 @@ export const EditPatientModal: React.FC<EditPatientModalProps> = ({ patient, isO
 
                       {/* Workflow Editing */}
                       <div className="space-y-4">
-                        <h4 className="text-sm font-bold text-slate-900 border-b border-slate-100 pb-2">Treatment Preparation Workflow</h4>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <h4 className="text-sm font-bold text-slate-900 border-b border-slate-100 pb-2 flex items-center gap-2">
+                           <Activity className="w-4 h-4 text-teal-600" />
+                           Treatment Preparation Workflow
+                        </h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                           {[
                             { label: 'CT Simulation', key: 'ctSimulation' },
                             { label: 'Contouring', key: 'contouring' },
@@ -375,13 +402,13 @@ export const EditPatientModal: React.FC<EditPatientModalProps> = ({ patient, isO
                           ].map((step) => {
                             const stepData = formData.radiationPlan?.workflow?.[step.key as keyof RTWorkflow] || { status: WorkflowStatus.PENDING };
                             return (
-                              <div key={step.key} className="p-4 border border-slate-200 rounded-xl space-y-3">
+                              <div key={step.key} className="p-5 border border-slate-200 rounded-2xl space-y-4 bg-white shadow-sm transition-all hover:border-teal-100">
                                 <div className="flex items-center justify-between">
-                                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500">{step.label}</span>
+                                  <span className="text-xs font-black uppercase tracking-widest text-slate-400">{step.label}</span>
                                   <select 
                                     value={stepData.status} 
                                     onChange={(e) => handleWorkflowChange(step.key as keyof RTWorkflow, 'status', e.target.value)}
-                                    className={`text-xs font-bold border rounded px-2 py-1 outline-none ${
+                                    className={`text-xs font-bold border rounded-lg px-3 py-1.5 outline-none transition-all ${
                                       stepData.status === WorkflowStatus.APPROVED || stepData.status === WorkflowStatus.COMPLETED ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
                                       stepData.status === WorkflowStatus.IN_PROGRESS ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-slate-50 text-slate-500'
                                     }`}
@@ -389,19 +416,35 @@ export const EditPatientModal: React.FC<EditPatientModalProps> = ({ patient, isO
                                     {Object.values(WorkflowStatus).map(s => <option key={s} value={s}>{s}</option>)}
                                   </select>
                                 </div>
-                                <div className="grid grid-cols-2 gap-2">
-                                  <input 
-                                    type="date"
-                                    value={stepData.date || ''}
-                                    onChange={(e) => handleWorkflowChange(step.key as keyof RTWorkflow, 'date', e.target.value)}
-                                    className="text-xs border border-slate-200 rounded px-2 py-1.5"
-                                  />
-                                  <input 
-                                    placeholder="Staff/Doctor"
-                                    value={stepData.staff || ''}
-                                    onChange={(e) => handleWorkflowChange(step.key as keyof RTWorkflow, 'staff', e.target.value)}
-                                    className="text-xs border border-slate-200 rounded px-2 py-1.5"
-                                  />
+                                
+                                <div className="space-y-3">
+                                  <div className="flex items-center gap-2">
+                                     <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                                     <input 
+                                        type="date"
+                                        value={stepData.date || ''}
+                                        onChange={(e) => handleWorkflowChange(step.key as keyof RTWorkflow, 'date', e.target.value)}
+                                        className="text-xs border border-slate-200 rounded-lg px-3 py-2 w-full outline-none focus:ring-1 focus:ring-teal-500"
+                                      />
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                     <User className="w-3.5 h-3.5 text-slate-400" />
+                                     <input 
+                                        placeholder="Staff/Physician Name"
+                                        value={stepData.staff || ''}
+                                        onChange={(e) => handleWorkflowChange(step.key as keyof RTWorkflow, 'staff', e.target.value)}
+                                        className="text-xs border border-slate-200 rounded-lg px-3 py-2 w-full outline-none focus:ring-1 focus:ring-teal-500"
+                                      />
+                                  </div>
+                                  <div className="flex items-start gap-2">
+                                     <StickyNote className="w-3.5 h-3.5 text-slate-400 mt-2" />
+                                     <textarea 
+                                        placeholder="Add clinical/planning notes..."
+                                        value={stepData.notes || ''}
+                                        onChange={(e) => handleWorkflowChange(step.key as keyof RTWorkflow, 'notes', e.target.value)}
+                                        className="text-xs border border-slate-200 rounded-lg px-3 py-2 w-full min-h-[60px] resize-none outline-none focus:ring-1 focus:ring-teal-500"
+                                      />
+                                  </div>
                                 </div>
                               </div>
                             );
@@ -410,18 +453,20 @@ export const EditPatientModal: React.FC<EditPatientModalProps> = ({ patient, isO
                       </div>
 
                       {/* Fraction Entry Fast Actions */}
-                      <div className="p-4 bg-teal-50 rounded-xl border border-teal-100 flex items-center justify-between">
-                         <div className="flex items-center gap-3">
-                           <CheckCircle2 className="w-5 h-5 text-teal-600" />
+                      <div className="p-5 bg-teal-50 rounded-2xl border border-teal-100 flex items-center justify-between shadow-sm">
+                         <div className="flex items-center gap-4">
+                           <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center text-teal-600 shadow-sm">
+                             <CheckCircle2 className="w-6 h-6" />
+                           </div>
                            <div>
-                             <p className="text-sm font-bold text-teal-900">Record Treatment Session</p>
-                             <p className="text-xs text-teal-600">Quick log the next delivered fraction</p>
+                             <p className="text-sm font-bold text-teal-900 uppercase tracking-tight">Record Treatment Session</p>
+                             <p className="text-xs text-teal-600">Instantly log today's delivered fraction for tracking.</p>
                            </div>
                          </div>
                          <button 
                            type="button" 
                            onClick={addFraction}
-                           className="px-4 py-2 bg-teal-600 text-white rounded-lg text-sm font-bold shadow-sm hover:bg-teal-700"
+                           className="px-6 py-2.5 bg-teal-600 text-white rounded-xl text-sm font-bold shadow-md shadow-teal-600/20 hover:bg-teal-700 transition-all hover:scale-105 active:scale-95"
                          >
                            Deliver Fraction #{ (formData.radiationPlan?.dailyLog?.length || 0) + 1 }
                          </button>

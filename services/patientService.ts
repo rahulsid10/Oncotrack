@@ -2,39 +2,99 @@ import { supabase } from '../lib/supabaseClient';
 import { Patient } from '../types';
 import { MOCK_PATIENTS } from '../constants';
 
-// Helper to map DB columns (snake_case) to App types (camelCase)
-const mapDBToPatient = (row: any): Patient => ({
-  id: row.id.toString(),
-  mrn: row.mrn,
-  name: row.name,
-  age: row.age,
-  gender: row.gender,
-  admissionDate: row.admission_date,
-  diagnosis: row.diagnosis,
-  stage: row.stage,
-  roomNumber: row.room_number,
-  status: row.status,
-  attendingPhysician: row.attending_physician,
-  radiationPlan: row.radiation_plan,
-  chemoProtocol: row.chemo_protocol,
-  vitalsHistory: row.vitals_history || [],
-  allergies: row.allergies || [],
-  imageUrl: row.image_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(row.name)}&background=random`,
-  clinicalNotes: row.clinical_notes || [],
-});
+const LOCAL_STORAGE_KEY = 'oncotrack_local_patients';
 
-export const getPatients = async (): Promise<Patient[]> => {
-  const { data, error } = await supabase
-    .from('patients')
-    .select('*')
-    .order('created_at', { ascending: false });
-
-  if (error) {
-    console.error('Supabase fetch error:', error.message);
-    throw new Error(error.message);
+/**
+ * Robust Local Storage Retrieval
+ * Ensures the app has data even if the Supabase project is paused or blocked.
+ */
+const getLocalPatients = (): Patient[] => {
+  try {
+    const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {
+    console.warn("Local storage parse failed, resetting to defaults.");
   }
+  
+  // Initial fallback if no storage exists
+  localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(MOCK_PATIENTS));
+  return MOCK_PATIENTS;
+};
 
-  return (data || []).map(mapDBToPatient);
+const saveLocalPatients = (patients: Patient[]) => {
+  try {
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(patients));
+  } catch (e) {
+    console.error("Critical: Failed to persist ward data locally.", e);
+  }
+};
+
+/**
+ * Database to Frontend Mapper
+ * Handles the transition from snake_case (Postgres) to camelCase (TypeScript).
+ */
+const mapDBToPatient = (row: any): Patient => {
+  if (!row) throw new Error("Null data encountered in patient mapping");
+  
+  return {
+    id: row.id?.toString() || Math.random().toString(36).substr(2, 9),
+    mrn: row.mrn || 'N/A',
+    name: row.name || 'Unknown Patient',
+    age: Number(row.age) || 0,
+    gender: row.gender || 'Other',
+    admissionDate: row.admission_date || new Date().toISOString().split('T')[0],
+    dischargeDate: row.discharge_date || undefined,
+    diagnosis: row.diagnosis || 'Diagnosis Pending',
+    stage: row.stage || '',
+    roomNumber: row.room_number || '',
+    status: row.status || 'Stable',
+    intent: row.intent || null, 
+    attendingPhysician: row.attending_physician || 'Unassigned',
+    radiationPlan: row.radiation_plan || undefined,
+    chemoProtocol: row.chemo_protocol || undefined,
+    vitalsHistory: Array.isArray(row.vitals_history) ? row.vitals_history : [],
+    allergies: Array.isArray(row.allergies) ? row.allergies : [],
+    imageUrl: row.image_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(row.name || 'P')}&background=random`,
+    clinicalNotes: Array.isArray(row.clinical_notes) ? row.clinical_notes : [],
+  };
+};
+
+export const getPatients = async (): Promise<{ data: Patient[], isLocal: boolean }> => {
+  try {
+    const { data, error } = await supabase
+      .from('patients')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.debug(`Supabase Error ${error.code}: ${error.message}`);
+      throw new Error(error.message);
+    }
+    
+    const mappedData = (data || []).map(mapDBToPatient);
+    saveLocalPatients(mappedData);
+    
+    return { data: mappedData, isLocal: false };
+  } catch (err: any) {
+    const errorMsg = String(err);
+    
+    const isConnectivityIssue = 
+      errorMsg.includes('fetch') || 
+      err.name === 'TypeError' || 
+      err.code === 'PGRST100' || 
+      !window.navigator.onLine;
+
+    if (isConnectivityIssue) {
+      console.warn("Cloud connection unreachable. Transitioning to local ward cache.");
+    } else {
+      console.error("Unexpected Clinical Data Error:", errorMsg);
+    }
+    
+    return { data: getLocalPatients(), isLocal: true };
+  }
 };
 
 export const createPatient = async (patient: Omit<Patient, 'id'>): Promise<{ success: boolean; error?: string }> => {
@@ -44,10 +104,12 @@ export const createPatient = async (patient: Omit<Patient, 'id'>): Promise<{ suc
     age: patient.age,
     gender: patient.gender,
     admission_date: patient.admissionDate,
+    discharge_date: patient.dischargeDate || null,
     diagnosis: patient.diagnosis,
     stage: patient.stage,
     room_number: patient.roomNumber,
     status: patient.status,
+    intent: patient.intent, 
     attending_physician: patient.attendingPhysician,
     radiation_plan: patient.radiationPlan || null,
     chemo_protocol: patient.chemoProtocol || null,
@@ -57,31 +119,19 @@ export const createPatient = async (patient: Omit<Patient, 'id'>): Promise<{ suc
     clinical_notes: patient.clinicalNotes || [],
   };
 
-  const { error } = await supabase.from('patients').insert([dbRow]);
-
-  if (error) {
-    const errorMsg = error.message.toLowerCase();
-    
-    // If a column-related error occurs, strip both new columns and retry
-    if (errorMsg.includes('image_url') || errorMsg.includes('clinical_notes') || errorMsg.includes('column') || errorMsg.includes('cache')) {
-      const safeRow = { ...dbRow };
-      delete safeRow.image_url;
-      delete safeRow.clinical_notes;
-
-      console.warn(`Schema mismatch detected: "${error.message}". Retrying with minimal payload.`);
-      const { error: retryError } = await supabase.from('patients').insert([safeRow]);
-      
-      if (retryError) {
-        console.error('Supabase final retry failed:', retryError.message);
-        return { success: false, error: retryError.message };
-      }
+  try {
+    const { error } = await supabase.from('patients').insert([dbRow]);
+    if (error) throw new Error(error.message);
+    return { success: true };
+  } catch (err: any) {
+    if (String(err).includes('fetch') || err.name === 'TypeError') {
+      const local = getLocalPatients();
+      const newPatient = { ...patient, id: `loc-${Math.random().toString(36).substr(2, 5)}` } as Patient;
+      saveLocalPatients([newPatient, ...local]);
       return { success: true };
     }
-
-    console.error('Supabase insert error:', error.message);
-    return { success: false, error: error.message };
+    return { success: false, error: err.message || "Unknown write error" };
   }
-  return { success: true };
 };
 
 export const updatePatient = async (patient: Patient): Promise<{ success: boolean; error?: string }> => {
@@ -91,10 +141,12 @@ export const updatePatient = async (patient: Patient): Promise<{ success: boolea
     age: patient.age,
     gender: patient.gender,
     admission_date: patient.admissionDate,
+    discharge_date: patient.dischargeDate || null,
     diagnosis: patient.diagnosis,
     stage: patient.stage,
     room_number: patient.roomNumber,
     status: patient.status,
+    intent: patient.intent,
     attending_physician: patient.attendingPhysician,
     radiation_plan: patient.radiationPlan || null,
     chemo_protocol: patient.chemoProtocol || null,
@@ -104,94 +156,40 @@ export const updatePatient = async (patient: Patient): Promise<{ success: boolea
     clinical_notes: patient.clinicalNotes || [],
   };
 
-  const { error } = await supabase
-    .from('patients')
-    .update(dbRow)
-    .eq('id', patient.id)
-    .select();
-
-  if (error) {
-    const errorMsg = error.message.toLowerCase();
+  try {
+    const { error } = await supabase
+      .from('patients')
+      .update(dbRow)
+      .eq('id', patient.id);
     
-    if (errorMsg.includes('image_url') || errorMsg.includes('clinical_notes') || errorMsg.includes('column') || errorMsg.includes('cache')) {
-       const safeRow = { ...dbRow };
-       delete safeRow.image_url;
-       delete safeRow.clinical_notes;
-
-       console.warn(`Schema mismatch detected on update: "${error.message}". Retrying with minimal payload.`);
-       const { error: retryError } = await supabase
-          .from('patients')
-          .update(safeRow)
-          .eq('id', patient.id)
-          .select();
-      
-       if (retryError) return { success: false, error: retryError.message };
-       return { success: true };
+    if (error) throw new Error(error.message);
+    return { success: true };
+  } catch (err: any) {
+    if (String(err).includes('fetch') || err.name === 'TypeError') {
+      const local = getLocalPatients();
+      const updated = local.map(p => p.id === patient.id ? patient : p);
+      saveLocalPatients(updated);
+      return { success: true };
     }
-
-    console.error('Supabase update error:', error.message);
-    return { success: false, error: error.message };
+    return { success: false, error: err.message || "Unknown update error" };
   }
-  return { success: true };
 };
 
 export const deletePatient = async (id: string): Promise<{ success: boolean; error?: string }> => {
-  const { error } = await supabase
-    .from('patients')
-    .delete()
-    .eq('id', id);
+  try {
+    const { error } = await supabase
+      .from('patients')
+      .delete()
+      .eq('id', id);
 
-  if (error) {
-    console.error('Supabase delete error:', error.message);
-    return { success: false, error: error.message };
-  }
-  return { success: true };
-};
-
-export const seedPatients = async (): Promise<{ success: boolean; error?: string }> => {
-  const dbRows = MOCK_PATIENTS.map(p => ({
-    mrn: p.mrn,
-    name: p.name,
-    age: p.age,
-    gender: p.gender,
-    admission_date: p.admissionDate,
-    diagnosis: p.diagnosis,
-    stage: p.stage,
-    room_number: p.roomNumber,
-    status: p.status,
-    attending_physician: p.attendingPhysician,
-    radiation_plan: p.radiationPlan || null,
-    chemo_protocol: p.chemoProtocol || null,
-    vitals_history: p.vitalsHistory || [],
-    allergies: p.allergies || [],
-    image_url: p.imageUrl,
-    clinical_notes: p.clinicalNotes || []
-  }));
-
-  const { error } = await supabase.from('patients').insert(dbRows);
-
-  if (error) {
-    const errorMsg = error.message.toLowerCase();
-    if (errorMsg.includes('image_url') || errorMsg.includes('clinical_notes') || errorMsg.includes('column') || errorMsg.includes('cache')) {
-       console.warn(`Schema mismatch during seed: ${error.message}. Stripping additional columns and retrying.`);
-       
-       const safeRows = dbRows.map(r => {
-         const row: any = { ...r };
-         delete row.image_url;
-         delete row.clinical_notes;
-         return row;
-       });
-
-       const { error: retryError } = await supabase.from('patients').insert(safeRows);
-       if (retryError) {
-         console.error('Supabase final retry seed failed:', retryError.message);
-         return { success: false, error: retryError.message };
-       }
-       return { success: true };
+    if (error) throw new Error(error.message);
+    return { success: true };
+  } catch (err: any) {
+    if (String(err).includes('fetch') || err.name === 'TypeError') {
+      const local = getLocalPatients();
+      saveLocalPatients(local.filter(p => p.id !== id));
+      return { success: true };
     }
-
-    console.error('Supabase seed error:', error.message);
-    return { success: false, error: error.message };
+    return { success: false, error: err.message || "Unknown deletion error" };
   }
-  return { success: true };
 };
